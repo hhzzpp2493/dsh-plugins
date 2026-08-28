@@ -1,0 +1,32 @@
+# dsh-feishu-cli-bridge systemd unit (install with root)
+[Unit]
+Description=DSH Feishu CLI bridge (lark-cli + dsh runtime)
+After=network.target
+
+[Unit]
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/dsh/feishu-bridge
+Environment=DSH_HOME=/home/ubuntu/dsh/.dsh
+Environment=HOME=/home/ubuntu/dsh/.home
+Environment=XDG_CONFIG_HOME=/home/ubuntu/dsh/.xdg/config
+Environment=XDG_DATA_HOME=/home/ubuntu/dsh/.xdg/data
+Environment=DSH_FEISHU_HOST_PROFILE=feishu-bridge
+Environment=DSH_FEISHU_PROFILE=feishu-agent
+Environment=DSH_FEISHU_DSH_BIN=/usr/bin/dsh
+Environment=DSH_FEISHU_WORKSPACE=/home/ubuntu/dsh/feishu-workspace
+Environment=DSH_FEISHU_MEDIA_DIR=/home/ubuntu/dsh/feishu-media
+Environment=DSH_FEISHU_CLI_BIN=/home/ubuntu/dsh/.lark-cli/node_modules/.bin/lark-cli
+Environment=DSH_FEISHU_PROVIDER=opencode-go
+Environment=DSH_FEISHU_MODEL=deepseek-v4-flash
+Environment=DSH_FEISHU_NOTIFY_PORT=48680
+Environment=DSH_FEISHU_ACK=1
+ExecStart=/usr/bin/node /usr/bin/dsh --profile feishu-bridge
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

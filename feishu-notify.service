@@ -1,0 +1,17 @@
+# One-shot task: after 7 days of bridge verification, notify the user in Feishu.
+# The timer (feishu-notify.timer) fires it; the script disables itself after sending.
+[Unit]
+Description=Feishu notify: 7-day verification complete
+After=network.target dsh-feishu-cli-bridge.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/dsh/feishu-bridge
+Environment=HOME=/home/ubuntu/dsh/.home
+Environment=XDG_CONFIG_HOME=/home/ubuntu/dsh/.xdg/config
+Environment=XDG_DATA_HOME=/home/ubuntu/dsh/.xdg/data
+Environment=DSH_FEISHU_CLI_BIN=/home/ubuntu/dsh/.lark-cli/node_modules/.bin/lark-cli
+Environment=DSH_FEISHU_NOTIFY_CHAT_ID=oc_3af6a0d67edc3161e03184cc047bbc06
+ExecStart=/home/ubuntu/dsh/feishu-bridge/notify-after-week.sh
+RemainAfterExit=no

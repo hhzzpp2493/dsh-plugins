@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# logs & runtime state
+*.log
+*.pid
+*.tmp
+
+# credentials & local secrets — never commit these
+.env
+.env.*
+*.pem
+*.key
+*credential*
+*token*.txt
+
+# OS junk
+.DS_Store
+Thumbs.db
