@@ -1,0 +1,30 @@
+{
+  "name": "dsh-github-toolkit",
+  "version": "0.1.0",
+  "description": "把「插件上传 GitHub + 云服务器同步」封装成 dsh 工具：gh_publish_plugin / gh_sync_plugins / gh_new_plugin，新插件一键发布、新机器一键装齐，不再手动走流程。",
+  "private": false,
+  "type": "module",
+  "main": "plugin.js",
+  "exports": {
+    ".": "./plugin.js",
+    "./tools": "./tools/index.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "github",
+    "cordis",
+    "plugin",
+    "toolkit"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./bundle.patch.yml"
+    }
+  }
+}
