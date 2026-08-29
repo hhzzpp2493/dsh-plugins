@@ -467,6 +467,9 @@ function registerGithubTools(ctx, config = {}) {
         properties: {
           ok: { type: 'boolean' },
           dshHome: { type: 'string' },
+          user: { type: 'string' },
+          branch: { type: 'string' },
+          monorepo: { type: 'string' },
           results: {
             type: 'array',
             items: { type: 'object', additionalProperties: true },
