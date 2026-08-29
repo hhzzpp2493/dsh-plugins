@@ -435,6 +435,8 @@ function registerGithubTools(ctx, config = {}) {
           repoUrl: { type: 'string' },
           pushed: { type: 'boolean' },
           hint: { type: 'string' },
+          branch: { type: 'string' },
+          monorepo: { type: 'string' },
         },
       },
       render: (_args, raw) =>
