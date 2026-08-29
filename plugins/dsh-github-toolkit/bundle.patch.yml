@@ -1,0 +1,11 @@
+# dsh-github-toolkit as a profile bundle: registers gh_publish_plugin /
+# gh_sync_plugins / gh_new_plugin agent tools on profile boot.
+# 也可不用 bundles，直接在你的 profile 的 cordis.patch.yml 里 insert（见 README）。
+- insert:
+    - id: github-toolkit
+      name: 'dsh-github-toolkit'
+      config:
+        # user: hhzzpp2493            # GitHub 用户名（或设环境变量 DSH_GH_USER）
+        # keyPath: /home/hzp/deepseek/.ssh/id_ed25519_dsh   # 推送用 SSH 私钥（或 DSH_GH_KEY）
+        # pat: ''                     # 建仓库用的 PAT（或 DSH_GH_PAT）；不配置则发布时提示网页建仓库
+        # plugins: [ dsh-feishu-cli-bridge, dsh-web-search-tavily, dsh-github-toolkit ]
