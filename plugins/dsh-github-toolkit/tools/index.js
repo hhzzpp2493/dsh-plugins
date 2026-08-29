@@ -2,7 +2,7 @@
 // so the dsh agent can publish plugin directories to the user's GitHub account and
 // install/sync them on any DSH_HOME, without re-walking the manual flow.
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync, rmSync, symlinkSync, mkdtempSync } from 'node:fs';
 import { join, dirname, basename, resolve as resolvePath } from 'node:path';
 import os from 'node:os';
 
@@ -48,11 +48,17 @@ function loadConfig(config = {}) {
     keyPath: config.keyPath ?? process.env.DSH_GH_KEY ?? join(os.homedir(), '.ssh', 'id_ed25519_dsh'),
     pat: config.pat ?? process.env.DSH_GH_PAT,
     branch: config.branch ?? 'main',
+    // 总库（monorepo）模式：所有插件收进一个 GitHub 仓库的 plugins/<name> 子目录。
+    // 配置 monorepo=<总库名> 后，gh_publish_plugin 推总库、gh_sync_plugins 拉总库，
+    // 不再需要为每个插件单独建库（彻底告别 PAT 与手动建库）。
+    monorepo: config.monorepo ?? process.env.DSH_GH_MONOREPO,
+    // 本地总库工作区（可选）。配置后发布直接改这个工作区再 push；否则发布时临时 clone。
+    monorepoDir: config.monorepoDir ?? process.env.DSH_GH_MONOREPO_DIR,
     plugins: Array.isArray(config.plugins) && config.plugins.length
       ? config.plugins
       : (process.env.DSH_GH_PLUGINS
           ? process.env.DSH_GH_PLUGINS.split(',').map((s) => s.trim()).filter(Boolean)
-          : ['dsh-feishu-cli-bridge', 'dsh-web-search-tavily', 'dsh-github-toolkit']),
+          : ['dsh-feishu-cli-bridge', 'dsh-web-search-tavily', 'dsh-github-toolkit', 'dsh-cloud-server']),
   };
 }
 
@@ -99,9 +105,144 @@ async function createRepoViaApi(cfg, { name, description, private: isPrivate, br
   return { created: true, url: body.html_url ?? `https://github.com/${cfg.user}/${name}` };
 }
 
+// ------------------------------------------------------------ monorepo helpers
+
+/** 递归复制目录，排除不该进仓库的项（node_modules/.git/日志/密钥等）。 */
+function copyTree(src, dest, { exclude = [] } = {}) {
+  const skip = new Set(['.git', 'node_modules', ...exclude]);
+  mkdirSync(dest, { recursive: true });
+  for (const entry of readdirSync(src, { withFileTypes: true })) {
+    if (skip.has(entry.name)) continue;
+    const from = join(src, entry.name);
+    const to = join(dest, entry.name);
+    if (entry.isDirectory()) copyTree(from, to, { exclude });
+    else copyFileSync(from, to);
+  }
+}
+
+/** 在给定 git 仓库工作树里把插件内容同步到正目录并提交推送（总库模式核心）。 */
+function commitPluginToRepo({ repoDir, pluginDir, pluginName, branch, commitMessage, cfg }) {
+  const target = join(repoDir, 'plugins', pluginName);
+  // 先清掉旧内容再覆盖，保证删除的文件也生效
+  rmSync(target, { recursive: true, force: true });
+  copyTree(pluginDir, target, { exclude: [] });
+  run('git', ['config', 'user.name', cfg.user], { cwd: repoDir });
+  run('git', ['config', 'user.email', `${cfg.user}@users.noreply.github.com`], { cwd: repoDir });
+  // 兼容新老目录形态
+  const oldTarget = join(repoDir, pluginName);
+  run('git', ['rm', '-r', '--ignore-unmatch', '--quiet', pluginName], { cwd: repoDir, soft: true });
+  run('git', ['add', '-A'], { cwd: repoDir });
+  const changed = run('git', ['diff', '--cached', '--quiet'], { cwd: repoDir }).status !== 0;
+  if (!changed) return { pushed: false };
+  const msg = commitMessage ?? `update ${pluginName}: ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+  const commit = run('git', ['commit', '-m', msg], { cwd: repoDir });
+  if (commit.status !== 0 && !/nothing to commit|no changes/.test(commit.stdout + commit.stderr)) {
+    throw new Error(`gh_publish_plugin: 总库 commit 失败: ${commit.stderr || commit.stdout}`);
+  }
+  const push = run('git', ['push', '-u', 'origin', branch], { cwd: repoDir, env: gitSSHEnv(cfg), timeout: 180_000 });
+  if (push.status !== 0) throw new Error(`gh_publish_plugin: 总库 push 失败: ${push.stderr}`);
+  return { pushed: true };
+}
+
+/** 总库模式发布：把插件目录推送进 monorepo 的 plugins/<name> 子目录。 */
+async function publishPluginMonorepo(cfg, { pluginDir, pluginName, branch, description, commitMessage }) {
+  const monorepo = cfg.monorepo;
+  const knownHosts = join(dirname(cfg.keyPath), 'known_hosts');
+
+  // 1. 选择总库工作区：优先用配置的本地工作区，否则临时 clone
+  let repoDir = null;
+  let tmpDir = null;
+  if (cfg.monorepoDir && existsSync(join(cfg.monorepoDir, '.git'))) {
+    repoDir = cfg.monorepoDir;
+    // 确保分支一致并拉到最新
+    const fetched = run('git', ['fetch', 'origin', branch], { cwd: repoDir, env: gitSSHEnv(cfg), timeout: 120_000, soft: true });
+    if (fetched.status === 0) run('git', ['checkout', '-B', branch, `origin/${branch}`], { cwd: repoDir, env: gitSSHEnv(cfg), soft: true });
+  } else {
+    tmpDir = mkdtempSync(join(os.tmpdir(), 'dsh-monorepo-'));
+    const clone = run('git', [
+      'clone', '-b', branch, '--depth', '1', sshUrl(cfg, monorepo), tmpDir,
+    ], { env: gitSSHEnv(cfg), timeout: 180_000 });
+    if (clone.status !== 0) {
+      throw new Error(`gh_publish_plugin: 总库 ${monorepo} 不存在或无法访问（${clone.stderr}）。请在 GitHub 网页创建空仓库后重试。`);
+    }
+    repoDir = tmpDir;
+  }
+
+  try {
+    return await Promise.resolve(commitPluginToRepo({ repoDir, pluginDir, pluginName, branch, commitMessage, cfg }));
+  } finally {
+    if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+// @ts-ignore
+// (fs 函数已在顶部 import)
+
+/** 总库模式同步：克隆/拉取 monorepo，把 plugins/ 下所有插件软链进 fallback 目录。 */
+export async function syncPluginsMonorepo(cfg, dshHome, userOverride) {
+  const branch = cfg.branch ?? 'main';
+  const user = userOverride ?? cfg.user;
+  if (!user) throw new Error('gh_sync_plugins: 未配置 GitHub 用户名（config.user / DSH_GH_USER / 参数 user）');
+  const monorepo = cfg.monorepo;
+  const fallback = join(dshHome, 'profiles', 'node_modules');
+  const srcDir = join(dshHome, 'profiles', '.dsh-plugins-src');
+  mkdirSync(srcDir, { recursive: true });
+  const repoDir = join(srcDir, monorepo);
+  const results = [];
+
+  // 1. clone 或 pull 总库
+  try {
+    if (!existsSync(join(repoDir, '.git'))) {
+      const clone = run('git', ['clone', '-b', branch, '--depth', '1', sshUrl(cfg, monorepo), repoDir], { env: gitSSHEnv(cfg), timeout: 180_000 });
+      if (clone.status !== 0) throw new Error(`总库 ${monorepo} 克隆失败: ${clone.stderr}`);
+    } else {
+      const fetch = run('git', ['fetch', '--quiet', 'origin'], { cwd: repoDir, env: gitSSHEnv(cfg), timeout: 120_000 });
+      if (fetch.status !== 0) throw new Error(`总库 fetch 失败: ${fetch.stderr}`);
+      const local = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir }).stdout;
+      if (local !== branch) run('git', ['checkout', '-B', branch, `origin/${branch}`], { cwd: repoDir, soft: true });
+      const pull = run('git', ['pull', '--ff-only', '--quiet'], { cwd: repoDir, env: gitSSHEnv(cfg), timeout: 120_000 });
+      if (pull.status !== 0) throw new Error(`总库 pull 失败: ${pull.stderr}`);
+    }
+  } catch (err) {
+    return { ok: false, dshHome, user, results: [{ name: monorepo, status: 'error', detail: err.message }], branch };
+  }
+
+  // 2. 把 plugins/ 下每个插件软链进 fallback（缺省同步全部，除非配置了 plugins 列表）
+  mkdirSync(fallback, { recursive: true });
+  const srcPlugins = join(repoDir, 'plugins');
+  let names = cfg.plugins ?? [];
+  if (!names.length) {
+    if (existsSync(srcPlugins)) {
+      names = readdirSync(srcPlugins, { withFileTypes: true })
+        .filter((d) => d.isDirectory() && existsSync(join(srcPlugins, d.name, 'package.json')))
+        .map((d) => d.name);
+    } else {
+      return { ok: false, dshHome, user, results: [{ name: monorepo, status: 'error', detail: '总库里没有 plugins/ 目录' }], branch };
+    }
+  }
+  for (const name of names) {
+    const src = join(srcPlugins, name);
+    const link = join(fallback, name);
+    try {
+      if (!existsSync(join(src, 'package.json'))) {
+        results.push({ name, status: 'error', detail: `总库 plugins/${name} 不存在` });
+        continue;
+      }
+      rmSync(link, { recursive: true, force: true });
+      symlinkSync(src, link, 'dir');
+      results.push({ name, status: 'linked', detail: src });
+    } catch (err) {
+      results.push({ name, status: 'error', detail: err.message });
+    }
+  }
+  return { ok: results.every((r) => r.status !== 'error'), dshHome, user, results, branch };
+}
+
 // ------------------------------------------------------------ core logic
 
-/** 发布/更新一个插件目录到 GitHub。repo 不存在时：有 PAT 自动建；没有则返回提示。 */
+/** 发布/更新一个插件目录到 GitHub。repo 不存在时：有 PAT 自动建；没有则返回提示。
+ *  总库模式（cfg.monorepo 已配置）：直接把插件推入总库的 plugins/<name> 子目录，
+ *  不需要单独建库、不需要 PAT。 */
 export async function publishPlugin(cfg, opts) {
   const branch = cfg.branch ?? 'main';
   const pluginDir = resolvePath(opts.pluginDir);
@@ -112,6 +253,11 @@ export async function publishPlugin(cfg, opts) {
   if (!/^[A-Za-z0-9_.-]+$/.test(repo)) throw new Error(`gh_publish_plugin: 非法仓库名 "${repo}"`);
   if (!cfg.user) throw new Error('gh_publish_plugin: 未配置 GitHub 用户名（config.user 或 DSH_GH_USER）');
   if (!existsSync(cfg.keyPath)) throw new Error(`gh_publish_plugin: SSH 私钥不存在 ${cfg.keyPath}（config.keyPath 或 DSH_GH_KEY）`);
+
+  // 总库模式：推入 monorepo 的 plugins/ 子目录
+  if (cfg.monorepo) {
+    return publishPluginMonorepo(cfg, { pluginDir, pluginName: repo, branch, description: opts.description, commitMessage: opts.commitMessage });
+  }
 
   // 1. 确保是 git 仓库并写好身份
   if (!existsSync(join(pluginDir, '.git'))) {
@@ -167,6 +313,8 @@ export async function syncPlugins(cfg, dshHome, userOverride) {
   const branch = cfg.branch ?? 'main';
   const user = userOverride ?? cfg.user;
   if (!user) throw new Error('gh_sync_plugins: 未配置 GitHub 用户名（config.user / DSH_GH_USER / 参数 user）');
+  // 总库模式：拉一个总库，软链全部插件
+  if (cfg.monorepo) return syncPluginsMonorepo(cfg, dshHome, userOverride);
   const fallback = join(dshHome, 'profiles', 'node_modules');
   const results = [];
   for (const repo of cfg.plugins) {
@@ -253,7 +401,9 @@ function registerGithubTools(ctx, config = {}) {
   ctx.tools.register({
     name: 'gh_publish_plugin',
     description:
-      '把一个本地插件目录发布/更新到 GitHub 用户的仓库：自动建仓库（需 DSH_GH_PAT 配置或网页建）、git commit、SSH 推送。之后云服务器可用 gh_sync_plugins 拉取。',
+      '把一个本地插件目录发布/更新到 GitHub：自动 commit + push。' +
+      '配置 monorepo=<总库名> 后走总库模式（推荐）：推入总库 dsh-plugins 的 plugins/<目录>，无需单独建库、无需 PAT。' +
+      '未配置总库时维持单仓库模式（需 DSH_GH_PAT 建库或网页先建）。之后云服务器可用 gh_sync_plugins 拉取。',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -297,7 +447,9 @@ function registerGithubTools(ctx, config = {}) {
   ctx.tools.register({
     name: 'gh_sync_plugins',
     description:
-      '把 GitHub 上的 dsh 插件（可配置列表）安装/同步到指定 DSH_HOME 的 profiles/node_modules 回退目录：首次克隆，之后拉取更新。适合在新服务器上一键装齐插件。',
+      '把 GitHub 上的 dsh 插件安装/同步到指定 DSH_HOME 的 profiles/node_modules 回退目录：首次克隆，之后拉取更新。' +
+      '配置 monorepo=<总库名> 后走总库模式：一次拉取总库 dsh-plugins，把 plugins/ 下全部插件软链进来（新插件自动生效）。' +
+      '适合在新服务器上一键装齐插件。',
     parameters: {
       type: 'object',
       additionalProperties: false,
