@@ -133,7 +133,7 @@ function commitPluginToRepo({ repoDir, pluginDir, pluginName, branch, commitMess
   run('git', ['rm', '-r', '--ignore-unmatch', '--quiet', pluginName], { cwd: repoDir, soft: true });
   run('git', ['add', '-A'], { cwd: repoDir });
   const changed = run('git', ['diff', '--cached', '--quiet'], { cwd: repoDir }).status !== 0;
-  if (!changed) return { pushed: false };
+  if (!changed) return { pushed: false, changed: false };
   const msg = commitMessage ?? `update ${pluginName}: ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
   const commit = run('git', ['commit', '-m', msg], { cwd: repoDir });
   if (commit.status !== 0 && !/nothing to commit|no changes/.test(commit.stdout + commit.stderr)) {
@@ -141,7 +141,7 @@ function commitPluginToRepo({ repoDir, pluginDir, pluginName, branch, commitMess
   }
   const push = run('git', ['push', '-u', 'origin', branch], { cwd: repoDir, env: gitSSHEnv(cfg), timeout: 180_000 });
   if (push.status !== 0) throw new Error(`gh_publish_plugin: 总库 push 失败: ${push.stderr}`);
-  return { pushed: true };
+  return { pushed: true, changed: true };
 }
 
 /** 总库模式发布：把插件目录推送进 monorepo 的 plugins/<name> 子目录。 */
@@ -169,7 +169,15 @@ async function publishPluginMonorepo(cfg, { pluginDir, pluginName, branch, descr
   }
 
   try {
-    return await Promise.resolve(commitPluginToRepo({ repoDir, pluginDir, pluginName, branch, commitMessage, cfg }));
+    const r = await Promise.resolve(commitPluginToRepo({ repoDir, pluginDir, pluginName, branch, commitMessage, cfg }));
+    return {
+      ok: true,
+      created: false,
+      repoUrl: `https://github.com/${cfg.user}/${monorepo}`,
+      pushed: !!r.pushed,
+      branch,
+      monorepo,
+    };
   } finally {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   }
