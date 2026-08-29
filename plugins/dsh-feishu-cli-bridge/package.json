@@ -1,0 +1,39 @@
+{
+  "name": "dsh-feishu-cli-bridge",
+  "version": "0.2.0",
+  "description": "把飞书/Lark 接进 dsh：官方 lark-cli 收发消息 + 独立 agent 运行时；私聊/群聊指挥 dsh coding agent，agent 可发消息/发文件并操控飞书云盘与云文档。| Bridge DeepSeek Harness into Feishu/Lark with the official lark-cli: chat-driven dsh agent, outbound messages/files, and Feishu Drive & doc control.",
+  "private": false,
+  "type": "module",
+  "main": "bridge/plugin.js",
+  "exports": {
+    ".": "./bridge/plugin.js",
+    "./tools": "./tools/index.js",
+    "./bridge/main": "./bridge/main.js",
+    "./package.json": "./package.json",
+    "./plugin": "./bridge/plugin.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "feishu",
+    "lark",
+    "lark-cli",
+    "bridge",
+    "cordis",
+    "plugin"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/dsh-sdk-client": "0.1.0-rc.8",
+    "@earendil-works/pi-ai": "^0.82.1",
+    "js-yaml": "^5.3.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./bundle.patch.yml"
+    }
+  }
+}

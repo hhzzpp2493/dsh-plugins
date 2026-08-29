@@ -1,0 +1,7 @@
+# dsh-feishu-cli-bridge as a profile bundle.
+# Added to a profile's dsh.profile.bundles, this patch starts the whole
+# Feishu bridge engine IN-PROCESS (lark-cli event consumer, per-chat session
+# routing, notify server, nested dsh agent runtime) on profile boot.
+- insert:
+    - id: feishu-bridge
+      name: 'dsh-feishu-cli-bridge/plugin'

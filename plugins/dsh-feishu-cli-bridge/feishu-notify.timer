@@ -1,0 +1,12 @@
+# Fires the notify task 7 days after activation. Persistent=true: if the
+# machine is off when it would fire, it runs at the next boot instead.
+[Unit]
+Description=Feishu notify timer: 7-day verification check
+
+[Timer]
+OnActiveSec=7d
+Persistent=true
+Unit=feishu-notify.service
+
+[Install]
+WantedBy=timers.target
