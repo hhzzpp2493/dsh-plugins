@@ -1,0 +1,10 @@
+# dsh-cloud-server bundle patch — 让 profile 以 bundle 方式加载本插件，注册
+# cloud_ssh / cloud_status 两个云服务器运维工具。
+- insert:
+    - id: dsh-cloud-server
+      name: 'dsh-cloud-server'
+      config:
+        # host: 1.14.169.244              # 云服务器地址（或设环境变量 DSH_CLOUD_HOST）
+        # user: ubuntu                    # SSH 用户名（或 DSH_CLOUD_USER，缺省 ubuntu）
+        # port: 22                        # SSH 端口（或 DSH_CLOUD_PORT，缺省 22）
+        # keyPath: /home/hzp/deepseek/server-key.pem   # SSH 私钥（或 DSH_CLOUD_KEY，缺省 ~/.ssh/id_ed25519_dsh）
