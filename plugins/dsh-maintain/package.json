@@ -1,0 +1,26 @@
+{
+  "name": "dsh-maintain",
+  "version": "0.1.0",
+  "description": "dsh 双端维护工具：让 agent 在 web 里直接查看/触发插件-核心同步维护（maintain_status / maintain_now / maintain_log）。底层复用 dsh-maintain.sh（拉总库 → 同步插件副本 → 有变更重启 web → 健康检查）。| Give the agent a visible handle on the local/cloud dsh maintenance loop (plugin sync, dsh core updates, web restart) so updates never silently drift.",
+  "private": false,
+  "type": "module",
+  "main": "plugin.js",
+  "exports": {
+    ".": "./plugin.js",
+    "./tools": "./tools/index.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "maintain",
+    "sync",
+    "cordis",
+    "plugin",
+    "tool"
+  ],
+  "license": "MIT"
+}
