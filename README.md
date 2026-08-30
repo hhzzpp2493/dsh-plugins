@@ -10,6 +10,7 @@
 | `plugins/dsh-github-toolkit` | GitHub 工具箱 | `gh_publish_plugin` / `gh_sync_plugins` / `gh_new_plugin` |
 | `plugins/dsh-cloud-server` | 云服务器运维 | `cloud_ssh` / `cloud_status`，随时远程调用云服务器 |
 | `plugins/dsh-web-search-tavily` | Tavily 搜索 | web search 提供方 |
+| `plugins/dsh-hierarchical-memory` | 分层记忆+自我进化 | 四层记忆 + LLM 反思/语义蒸馏（`memory_reflect` 工具） |
 
 ## 工作方式（总库模式）
 
