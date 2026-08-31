@@ -155,7 +155,10 @@ export function apply(ctx, config = {}) {
       additionalProperties: false,
       properties: {},
     },
-    output: { schema: { type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean' }, status: { type: 'string' } } } },
+    output: {
+      schema: { type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean' }, status: { type: 'string' } } },
+      render: (_args, raw) => text(raw.status ?? (raw.ok ? '维护正常' : '维护异常')),
+    },
     async execute() {
       const lines = [];
       lines.push(`## 本地（本机）`);
@@ -204,6 +207,7 @@ export function apply(ctx, config = {}) {
         required: ['ok'],
         properties: { ok: { type: 'boolean' }, exitCode: { type: 'number' }, output: { type: 'string' } },
       },
+      render: (_args, raw) => text(raw.output ?? (raw.ok ? '维护完成' : '维护失败')),
     },
     async execute() {
       const r = await run(['bash', cfg.maintainScript], { timeoutMs: cfg.nowTimeoutMs });
@@ -230,6 +234,7 @@ export function apply(ctx, config = {}) {
         required: ['ok'],
         properties: { ok: { type: 'boolean' }, lines: { type: 'integer' }, log: { type: 'string' } },
       },
+      render: (_args, raw) => text(raw.log ?? '(无日志)'),
     },
     async execute(rawArgs) {
       const limit = Math.min(200, Math.max(1, Number(rawArgs?.lines) || cfg.logLines));
