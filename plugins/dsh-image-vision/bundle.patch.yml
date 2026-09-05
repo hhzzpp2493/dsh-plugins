@@ -1,0 +1,8 @@
+# dsh-image-vision bundle patch — 让 profile 以 bundle 方式加载本插件。
+- insert:
+    - id: dsh-image-vision
+      name: 'dsh-image-vision'
+      config:
+        apiKeyEnv: SHANGTANG_API_KEY
+        baseUrl: https://token.sensenova.cn/v1
+        model: sensenova-6.8-flash-lite

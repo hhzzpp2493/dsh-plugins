@@ -13,7 +13,6 @@ import { homedir } from 'node:os';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { installModelSelection } from '@deepseek-ai/dsh-agent';
-import { resolveSessionPreset } from '@deepseek-ai/dsh-agent-presets';
 import { FeishuSender } from './sender.js';
 import { EventConsumer } from './event-consumer.js';
 
@@ -324,7 +323,7 @@ export class FeishuWebBridgeEngine {
         if (listed.some((h) => h.id === sessionId)) {
           const inspected = await this.sessionPersistence.inspect(sessionId);
           if (inspected.meta.cwd === this.workspacePath) {
-            const presetId = resolveSessionPreset({ header: inspected.meta, events: inspected.events });
+            const presetId = inspected.meta.agentPreset;
             const composition = await this.composePreset(presetId, chatId);
             const { agent: resumed } = await this.agents.resume({
               resumeSessionId: sessionId,

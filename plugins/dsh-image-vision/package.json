@@ -1,0 +1,31 @@
+{
+  "name": "dsh-image-vision",
+  "version": "0.1.0",
+  "description": "给 dsh 加「看图」能力：view_image 工具，把图片交给商汤日日新视觉模型（sensenova-6.8-flash-lite，OpenAI Vision 兼容）做描述/问答/OCR，返回文字结果供主模型使用。",
+  "private": false,
+  "type": "module",
+  "main": "plugin.js",
+  "exports": {
+    ".": "./plugin.js",
+    "./tools": "./tools/index.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "vision",
+    "image",
+    "ocr"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./bundle.patch.yml"
+    }
+  }
+}

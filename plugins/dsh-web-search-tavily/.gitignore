@@ -1,9 +1,0 @@
-# dependencies
-node_modules/
-
-# logs & runtime state
-*.log
-*.pid
-
-# OS junk
-.DS_Store
