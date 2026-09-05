@@ -52,6 +52,9 @@ export function loadConfig(env = process.env, override = {}) {
     showStats: override.showStats !== undefined
       ? Boolean(override.showStats)
       : (env.DSH_FEISHU_STATS?.trim() || '1') !== '0',
+    // Consecutive failed turns allowed per run before the bridge aborts and
+    // reports (instead of retrying a broken provider/model forever).
+    maxTurnRetries: Number(pick('DSH_FEISHU_MAX_TURN_RETRIES', '10', 'maxTurnRetries')),
   };
 }
 
@@ -144,6 +147,16 @@ export function lastTurnErrorText(events, firstSeq) {
     }
   }
   return '';
+}
+
+/** Count agent turns that ended in error after `firstSeq`. */
+export function countFailedTurns(events, firstSeq) {
+  let n = 0;
+  for (const event of events ?? []) {
+    if (event.seq < firstSeq) continue;
+    if (event.type === 'turn/end' && event.data?.reason?.kind === 'error') n += 1;
+  }
+  return n;
 }
 
 /** Server-local (Asia/Shanghai) display of a Date: 2026-08-31 07:00:00. */
@@ -436,6 +449,36 @@ export class FeishuWebBridgeEngine {
     return created;
   }
 
+  /**
+   * Wait for the agent run to finish, but give up after `maxTurnRetries`
+   * consecutive failed turns. Provider errors (e.g. NO_ADAPTER) will NOT
+   * self-heal by re-running the same broken model, so an unbounded wait
+   * becomes a retry storm (observed: 8h of ~10s turns). Hitting the cap
+   * cancels the agent; the caller surfaces the failure instead.
+   * @returns {Promise<{aborted: boolean, failedTurns: number}>}
+   */
+  async awaitIdleCapped(agent, firstSeq) {
+    const cap = Math.max(1, Number(this.config.maxTurnRetries) || 10);
+    let failedTurns = 0;
+    while (agent.status === 'running') {
+      const errors = countFailedTurns(agent.session?.events ?? [], firstSeq);
+      if (errors > failedTurns) {
+        failedTurns = errors;
+        if (failedTurns >= cap) {
+          this.log.warn(`run aborted after ${failedTurns} consecutive failed turns (maxTurnRetries=${cap})`);
+          try {
+            agent.cancel('exceeded-max-turn-retries');
+          } catch (error) {
+            this.log.warn('agent.cancel failed:', error?.message);
+          }
+          break;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+    return { aborted: failedTurns >= cap, failedTurns };
+  }
+
   // ---- event handling -----------------------------------------------------
 
   /** Serialize each chat's events (later messages queue behind earlier ones). */
@@ -569,8 +612,9 @@ export class FeishuWebBridgeEngine {
         source: { kind: 'user' },
       }));
 
+      let aborted = false;
       try {
-        await agent.whenIdle();
+        ({ aborted } = await this.awaitIdleCapped(agent, firstSeq));
       } catch (error) {
         this.log.error(`run failed for chat=${chatId}:`, error.message);
         this.trySend(chatId, `⚠️ 处理出错：${error.message}`);
@@ -586,7 +630,9 @@ export class FeishuWebBridgeEngine {
         const turnError = lastTurnErrorText(agent.session.events, firstSeq);
         if (turnError) {
           this.log.warn(`turn error for chat=${chatId}: ${turnError}`);
-          this.trySend(chatId, `⚠️ 本轮处理出错（可在 web 界面查看详情）：${turnError}`);
+          this.trySend(chatId, aborted
+            ? `⚠️ 模型连续出错已达上限（${this.config.maxTurnRetries} 次：${turnError}），已停止重试；请切换模型或稍后再试。`
+            : `⚠️ 本轮处理出错（可在 web 界面查看详情）：${turnError}`);
         } else {
           this.trySend(chatId, '（本轮没有文本回复，可在 web 界面查看完整过程）');
         }
@@ -1203,8 +1249,9 @@ export class FeishuWebBridgeEngine {
         source: { kind: 'user' },
       }));
 
+      let aborted = false;
       try {
-        await agent.whenIdle();
+        ({ aborted } = await this.awaitIdleCapped(agent, firstSeq));
       } catch (error) {
         log.error(`schedule ${rec.id} run failed for chat=${chatId}:`, error.message);
         return this.scheduleFail(rec, error.message);
@@ -1219,7 +1266,9 @@ export class FeishuWebBridgeEngine {
         const runError = lastTurnErrorText(agent.session.events, firstSeq);
         if (runError) {
           log.warn(`schedule ${rec.id}: run ended in error: ${runError}`);
-          return this.scheduleFail(rec, `模型调用失败：${runError}`, false);
+          return this.scheduleFail(rec, aborted
+            ? `模型连续失败已达上限（${this.config.maxTurnRetries} 次：${runError}）`
+            : `模型调用失败：${runError}`, aborted);
         }
         log.warn(`schedule ${rec.id}: empty response; will retry`);
         return this.scheduleFail(rec, 'empty response');

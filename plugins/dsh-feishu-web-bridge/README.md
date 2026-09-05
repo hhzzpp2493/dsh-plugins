@@ -48,7 +48,9 @@
 | `archiveInactiveDays` | `DSH_FEISHU_ARCHIVE_DAYS` | `7` | 聊天 N 天无活动 → 自动归档该会话（0=关） |
 | `archiveRetentionDays` | `DSH_FEISHU_RETENTION_DAYS` | `45` | 归档超过 N 天 → 物理清理（0=永久保留） |
 | `archiveKeepPerChat` | `DSH_FEISHU_KEEP_PER_CHAT` | `20` | 每聊天归档时间戳上限（清理用） |
-| `showStats` | `DSH_FEISHU_STATS` | `true` | 回复卡片底部显示 输入/输出/缓存命中 + 模型（`/stats` 可逐聊天覆盖） |
+| `showStats` | `DSH_FEISHU_STATS` | `true` |
+| `maxTurnRetries` | `DSH_FEISHU_MAX_TURN_RETRIES` | `10` | 单次运行连续失败 turn 上限：到达即中止 agent 并上报，避免模型/提供方故障时无限重试（重试风暴） |
+ 回复卡片底部显示 输入/输出/缓存命中 + 模型（`/stats` 可逐聊天覆盖） |
 
 ## 飞书端
 
