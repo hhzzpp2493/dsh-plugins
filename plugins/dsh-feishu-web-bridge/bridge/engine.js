@@ -856,6 +856,15 @@ export class FeishuWebBridgeEngine {
         this.sender.sendCard(chatId, buildReplyCard(parts[index], { footer: isLast && footer ? footer : undefined }));
       } catch (error) {
         this.log.error(`send reply card to chat=${chatId} failed: ${error.message}`);
+        // Fall back to a plain text message; if that also fails, tell the user
+        // instead of silently dropping the reply.
+        try {
+          this.sender.sendMessage(chatId, parts[index]);
+          this.log.warn(`chat=${chatId}: card send failed, sent text fallback`);
+        } catch (error2) {
+          this.log.error(`text fallback send to chat=${chatId} also failed: ${error2.message}`);
+          this.trySend(chatId, '⚠️ 消息发送失败（飞书服务异常），请稍后重试或重发。');
+        }
       }
     }
   }

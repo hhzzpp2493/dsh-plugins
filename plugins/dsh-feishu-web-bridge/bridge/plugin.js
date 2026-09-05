@@ -6,7 +6,7 @@
 // Install: put this package in $DSH_HOME/profiles/node_modules and insert it
 // into the web profile's cordis.patch.yml (same as the tavily/github-toolkit
 // entries). All bridge memory lives under $DSH_HOME/storages.
-import { FeishuWebBridgeEngine, loadConfig } from './engine.js';
+import { FeishuWebBridgeEngine, loadConfig, makeLogger } from './engine.js';
 
 export const name = 'dsh-feishu-web-bridge';
 
@@ -20,7 +20,10 @@ export const inject = [
 ];
 
 export function apply(ctx, config = {}, deps = {}) {
-  const logger = deps.logger ?? ctx.logger ?? console;
+  // Bridge logs go to the process stdout (-> /var/log/dsh/dsh.log) so send
+  // failures and lifecycle events are inspectable instead of being swallowed
+  // by the web app's structured logger.
+  const logger = makeLogger();
   const loggerWrap = {
     log: (...a) => safeInfo(logger, ...a),
     warn: (...a) => safeWarn(logger, ...a),
