@@ -159,6 +159,11 @@ export function countFailedTurns(events, firstSeq) {
   return n;
 }
 
+/** True when a turn error means the session context outgrew the model window. */
+export function isContextOverflow(text) {
+  return /CONTEXT_WINDOW_EXCEEDED|context length|context window/i.test(String(text ?? ''));
+}
+
 /** Server-local (Asia/Shanghai) display of a Date: 2026-08-31 07:00:00. */
 function formatLocalTime(d) {
   const pad = (n) => String(n).padStart(2, '0');
@@ -479,6 +484,104 @@ export class FeishuWebBridgeEngine {
     return { aborted: failedTurns >= cap, failedTurns };
   }
 
+  /**
+   * CONTEXT_WINDOW_EXCEEDED self-heal (user run): archive the current
+   * generation, mint a fresh session, and rerun the SAME prompt once so the
+   * turn still gets answered. If the fresh run also fails, report instead of
+   * looping. Returns true when the turn was handled here.
+   */
+  async recoverOverflowRun(chatId, userName, text) {
+    try {
+      await this.ready();
+      const rec = this.state.chats[chatId];
+      const oldId = rec?.sessionId;
+      await this.advanceChatGen(chatId, { archiveOld: true });
+      const fresh = this.state.chats[chatId];
+      this.log.warn(`context overflow in ${oldId}; archived and retrying once in ${fresh.sessionId}`);
+      this.trySend(chatId, `📦 旧会话上下文已超模型上限，已自动开新会话并重试这条消息…`);
+
+      const agent = await this.ensureSessionFor(chatId, fresh.sessionId);
+      if (agent.status === 'running') {
+        this.trySend(chatId, '⚠️ 新会话正忙，请稍候再发。');
+        return true;
+      }
+      fresh.sessionId = agent.session.id;
+      fresh.lastActivity = new Date().toISOString();
+      await this.saveState();
+
+      const firstSeq = agent.session.seq;
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: this.buildPrompt(chatId, userName, text) }],
+        source: { kind: 'user' },
+      }));
+      try {
+        await this.awaitIdleCapped(agent, firstSeq);
+      } catch (error) {
+        this.trySend(chatId, `⚠️ 新会话重试失败：${error.message}`);
+        return true;
+      }
+      try { await this.sessions.flush(agent.session); } catch { /* the loop flushes too */ }
+      fresh.lastActivity = new Date().toISOString();
+      await this.saveState();
+      const reply = summarizeText(agent.session.events, firstSeq);
+      if (reply) {
+        this.sendReply(chatId, reply, agent);
+        return true;
+      }
+      const err2 = lastTurnErrorText(agent.session.events, firstSeq);
+      this.trySend(chatId, err2
+        ? `⚠️ 新会话重试仍失败：${err2}`
+        : '（新会话本轮没有文本回复）');
+      return true;
+    } catch (error) {
+      this.log.warn('context-overflow recovery failed:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * CONTEXT_WINDOW_EXCEEDED self-heal (schedule run): archive + rerun the
+   * schedule prompt once in a fresh generation. Returns 'ok' | 'failed' |
+   * 'busy'.
+   */
+  async recoverOverflowSchedule(rec, chatId) {
+    try {
+      await this.ready();
+      const oldId = this.state.chats[chatId]?.sessionId;
+      await this.advanceChatGen(chatId, { archiveOld: true });
+      const fresh = this.state.chats[chatId];
+      this.log.warn(`schedule ${rec.id} context overflow in ${oldId}; retrying once in ${fresh.sessionId}`);
+      const agent = await this.ensureSessionFor(chatId, fresh.sessionId);
+      if (agent.status === 'running') return 'busy';
+      fresh.sessionId = agent.session.id;
+      fresh.lastActivity = new Date().toISOString();
+      await this.saveState();
+
+      const firstSeq = agent.session.seq;
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: buildSchedulePrompt(chatId, rec.prompt, new Date()) }],
+        source: { kind: 'user' },
+      }));
+      try {
+        await this.awaitIdleCapped(agent, firstSeq);
+      } catch (error) {
+        return 'failed';
+      }
+      try { await this.sessions.flush(agent.session); } catch { /* the loop flushes too */ }
+      fresh.lastActivity = new Date().toISOString();
+      await this.saveState();
+      const reply = summarizeText(agent.session.events, firstSeq);
+      if (reply) {
+        this.sendReply(chatId, reply, agent);
+        return 'ok';
+      }
+      return 'failed';
+    } catch (error) {
+      this.log.warn('schedule overflow recovery failed:', error.message);
+      return 'failed';
+    }
+  }
+
   // ---- event handling -----------------------------------------------------
 
   /** Serialize each chat's events (later messages queue behind earlier ones). */
@@ -630,9 +733,13 @@ export class FeishuWebBridgeEngine {
         const turnError = lastTurnErrorText(agent.session.events, firstSeq);
         if (turnError) {
           this.log.warn(`turn error for chat=${chatId}: ${turnError}`);
-          this.trySend(chatId, aborted
-            ? `⚠️ 模型连续出错已达上限（${this.config.maxTurnRetries} 次：${turnError}），已停止重试；请切换模型或稍后再试。`
-            : `⚠️ 本轮处理出错（可在 web 界面查看详情）：${turnError}`);
+          if (aborted) {
+            this.trySend(chatId, `⚠️ 模型连续出错已达上限（${this.config.maxTurnRetries} 次：${turnError}），已停止重试；请切换模型或稍后再试。`);
+          } else if (isContextOverflow(turnError)) {
+            await this.recoverOverflowRun(chatId, userName, text);
+          } else {
+            this.trySend(chatId, `⚠️ 本轮处理出错（可在 web 界面查看详情）：${turnError}`);
+          }
         } else {
           this.trySend(chatId, '（本轮没有文本回复，可在 web 界面查看完整过程）');
         }
@@ -1266,6 +1373,20 @@ export class FeishuWebBridgeEngine {
         const runError = lastTurnErrorText(agent.session.events, firstSeq);
         if (runError) {
           log.warn(`schedule ${rec.id}: run ended in error: ${runError}`);
+          if (!aborted && isContextOverflow(runError)) {
+            const outcome = await this.recoverOverflowSchedule(rec, chatId);
+            if (outcome === 'ok') {
+              const firedAt = Date.now();
+              rec.lastFiredAt = firedAt;
+              rec.failCount = 0;
+              if (rec.kind === 'one-shot') rec.active = false;
+              else rec.dueAt = nextDueMs(rec, rec.dueAt);
+              await this.saveSchedules();
+              log.log(`schedule ${rec.id} fired after overflow recovery; next due ${new Date(rec.dueAt).toISOString()}`);
+              return;
+            }
+            return this.scheduleFail(rec, `上下文超限且新会话重试${outcome === 'busy' ? '时会话正忙' : '失败'}：${runError}`, true);
+          }
           return this.scheduleFail(rec, aborted
             ? `模型连续失败已达上限（${this.config.maxTurnRetries} 次：${runError}）`
             : `模型调用失败：${runError}`, aborted);

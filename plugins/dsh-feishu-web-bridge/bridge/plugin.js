@@ -83,6 +83,7 @@ export function apply(ctx, config = {}, deps = {}) {
           archiveRetentionDays: SchemaObj.number().integer().min(0).description('Physically delete archived feishu sessions older than N days (0 = keep forever)'),
           archiveKeepPerChat: SchemaObj.number().integer().min(1).description('Max archived sessions remembered per chat for cleanup'),
           showStats: SchemaObj.boolean().description('Show usage/model footer at the bottom of reply cards'),
+          maxTurnRetries: SchemaObj.number().integer().min(0).default(10).description('Consecutive failed turns allowed per run before aborting (retry-storm guard)'),
         });
         const namespace = settingsNamespaceFn('dsh-feishu-web-bridge');
         ctx.inject(['settings'], async (settingsContext) => {
