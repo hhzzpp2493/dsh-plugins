@@ -114,11 +114,25 @@ function splitLongText(text, max = 4_000) {
   return parts;
 }
 
+/** Coerce session events (may be a compacted/archived object) into an array. */
+export function asEventArray(events) {
+  if (Array.isArray(events)) return events;
+  if (events && typeof events === 'object') {
+    if (Array.isArray(events.events)) return events.events;
+    if (Array.isArray(events.log)) return events.log;
+    if (Array.isArray(events.items)) return events.items;
+    if (Array.isArray(events.entries)) return events.entries;
+    if (Array.isArray(events.session)) return events.session;
+  }
+  return [];
+}
+
 /** Aggregate the last assistant text written after `firstSeq` (headless-style). */
 export function summarizeText(events, firstSeq) {
+  const evts = asEventArray(events);
   let started = false;
   let text = '';
-  for (const event of events) {
+  for (const event of evts) {
     if (event.seq < firstSeq) continue;
     if (event.type === 'turn/start') {
       started = true;
@@ -138,7 +152,7 @@ export function summarizeText(events, firstSeq) {
 
 /** First turn after `firstSeq` that ended in error → its message (for relay). */
 export function lastTurnErrorText(events, firstSeq) {
-  for (const event of events) {
+  for (const event of asEventArray(events)) {
     if (event.seq < firstSeq) continue;
     if (event.type === 'turn/end' && event.data?.reason?.kind === 'error') {
       const err = event.data.reason.error;
@@ -152,7 +166,7 @@ export function lastTurnErrorText(events, firstSeq) {
 /** Count agent turns that ended in error after `firstSeq`. */
 export function countFailedTurns(events, firstSeq) {
   let n = 0;
-  for (const event of events ?? []) {
+  for (const event of asEventArray(events)) {
     if (event.seq < firstSeq) continue;
     if (event.type === 'turn/end' && event.data?.reason?.kind === 'error') n += 1;
   }
@@ -582,6 +596,21 @@ export class FeishuWebBridgeEngine {
     }
   }
 
+  /** Best-effort reload of a session's events from persistence. In-memory
+   *  `agent.session.events` can become a non-array after compaction/archival,
+   *  so when summarizing finds nothing we fall back to the persisted log. */
+  async reloadSessionEvents(sessionId) {
+    try {
+      if (!this.sessionPersistence) return null;
+      const insp = await this.sessionPersistence.inspect(sessionId);
+      const raw = insp?.events ?? insp?.log ?? insp?.session?.events ?? insp;
+      return asEventArray(raw);
+    } catch (error) {
+      this.log.warn(`reload events failed for ${sessionId}:`, error.message);
+      return null;
+    }
+  }
+
   // ---- event handling -----------------------------------------------------
 
   /** Serialize each chat's events (later messages queue behind earlier ones). */
@@ -724,13 +753,22 @@ export class FeishuWebBridgeEngine {
         return;
       }
 
+      const atRest = asEventArray(agent.session?.events);
       try { await this.sessions.flush(agent.session); } catch { /* the loop flushes too */ }
-      const reply = summarizeText(agent.session.events, firstSeq);
+      let reply = summarizeText(atRest, firstSeq);
+      let turnError = lastTurnErrorText(atRest, firstSeq);
+      if (!reply && !turnError) {
+        const reloaded = await this.reloadSessionEvents(agent.session.id);
+        if (reloaded?.length) {
+          reply = summarizeText(reloaded, firstSeq) || reply;
+          turnError = turnError || lastTurnErrorText(reloaded, firstSeq);
+        }
+      }
       this.state.chats[chatId].lastActivity = new Date().toISOString();
       await this.saveState();
 
       if (!reply) {
-        const turnError = lastTurnErrorText(agent.session.events, firstSeq);
+        turnError = turnError || lastTurnErrorText(atRest, firstSeq);
         if (turnError) {
           this.log.warn(`turn error for chat=${chatId}: ${turnError}`);
           if (aborted) {
@@ -1373,13 +1411,22 @@ export class FeishuWebBridgeEngine {
         return this.scheduleFail(rec, error.message);
       }
 
+      const atRest = asEventArray(agent.session?.events);
       try { await this.sessions.flush(agent.session); } catch { /* the loop flushes too */ }
-      const reply = summarizeText(agent.session.events, firstSeq);
+      let reply = summarizeText(atRest, firstSeq);
+      let runError = lastTurnErrorText(atRest, firstSeq);
+      if (!reply && !runError) {
+        const reloaded = await this.reloadSessionEvents(agent.session.id);
+        if (reloaded?.length) {
+          reply = summarizeText(reloaded, firstSeq) || reply;
+          runError = runError || lastTurnErrorText(reloaded, firstSeq);
+        }
+      }
       this.state.chats[chatId].lastActivity = new Date().toISOString();
       await this.saveState();
 
       if (!reply) {
-        const runError = lastTurnErrorText(agent.session.events, firstSeq);
+        runError = runError || lastTurnErrorText(atRest, firstSeq);
         if (runError) {
           log.warn(`schedule ${rec.id}: run ended in error: ${runError}`);
           if (!aborted && isContextOverflow(runError)) {
