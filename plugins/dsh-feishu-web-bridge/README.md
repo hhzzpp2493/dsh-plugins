@@ -50,6 +50,8 @@
 | `archiveKeepPerChat` | `DSH_FEISHU_KEEP_PER_CHAT` | `20` | 每聊天归档时间戳上限（清理用） |
 | `showStats` | `DSH_FEISHU_STATS` | `true` |
 | `maxTurnRetries` | `DSH_FEISHU_MAX_TURN_RETRIES` | `10` | 单次运行连续失败 turn 上限：到达即中止 agent 并上报，避免模型/提供方故障时无限重试（重试风暴） |
+| `questionStallMs` | `DSH_FEISHU_QUESTION_STALL_MS` | `30000` | agent 卡在 `ask_user_question`（web 端确认框）超过 N 毫秒 → 取消本轮并把提问原文推送到飞书，避免死锁（飞书无确认框） |
+| `runHardTimeoutMs` | `DSH_FEISHU_RUN_HARD_TIMEOUT_MS` | `1800000` | 单轮运行硬性上限（毫秒）：到达即取消，兜底任何静默挂起 |
  回复卡片底部显示 输入/输出/缓存命中 + 模型（`/stats` 可逐聊天覆盖） |
 
 ## 飞书端

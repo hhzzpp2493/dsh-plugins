@@ -55,6 +55,12 @@ export function loadConfig(env = process.env, override = {}) {
     // Consecutive failed turns allowed per run before the bridge aborts and
     // reports (instead of retrying a broken provider/model forever).
     maxTurnRetries: Number(pick('DSH_FEISHU_MAX_TURN_RETRIES', '10', 'maxTurnRetries')),
+    // Feishu has no question UI: a run parked on ask_user_question would
+    // otherwise block forever (observed deadlock), so after this grace we
+    // cancel the turn and surface the question to the chat.
+    questionStallMs: Number(pick('DSH_FEISHU_QUESTION_STALL_MS', '30000', 'questionStallMs')),
+    // Absolute per-run ceiling: last-resort guard against any silent hang.
+    runHardTimeoutMs: Number(pick('DSH_FEISHU_RUN_HARD_TIMEOUT_MS', '1800000', 'runHardTimeoutMs')),
   };
 }
 
@@ -125,6 +131,39 @@ export function asEventArray(events) {
     if (Array.isArray(events.session)) return events.session;
   }
   return [];
+}
+
+/**
+ * If the run is parked on an unanswered `ask_user_question` tool call
+ * (Feishu has no question UI, so it would otherwise block forever), return
+ * the parsed questions; otherwise null. Tool calls are tracked by callId so
+ * a later tool/result for the same call clears the pending state.
+ */
+export function findPendingUserQuestion(events, firstSeq) {
+  const list = asEventArray(events);
+  const open = new Map();
+  for (const event of list) {
+    if (event.seq < firstSeq) continue;
+    if (event.type === 'tool/call' && event.data?.name === 'ask_user_question' && event.data?.callId) {
+      open.set(event.data.callId, event);
+      continue;
+    }
+    if (event.type === 'tool/result' && event.data) {
+      const resultCallId =
+        event.data.callId ??
+        event.data.message?.source?.callId ??
+        event.data.message?.content?.find?.((block) => block.type === 'tool-result')?.toolCallId;
+      if (resultCallId && open.has(resultCallId)) open.delete(resultCallId);
+    }
+  }
+  if (open.size === 0) return null;
+  const [call] = [...open.values()].slice(-1);
+  try {
+    const args = JSON.parse(call.data?.arguments ?? '{}');
+    return Array.isArray(args.questions) && args.questions.length ? args.questions : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Aggregate the last assistant text written after `firstSeq` (headless-style). */
@@ -478,12 +517,24 @@ export class FeishuWebBridgeEngine {
    */
   async awaitIdleCapped(agent, firstSeq) {
     const cap = Math.max(1, Number(this.config.maxTurnRetries) || 10);
+    // Feishu has no question UI: a run parked on ask_user_question would
+    // otherwise block forever (observed deadlock). After a short grace we
+    // cancel the turn so the caller can surface the question to the chat.
+    const questionStallMs = Math.max(0, Number(this.config.questionStallMs) || 30_000);
+    // Absolute ceiling per run — last-resort guard for any silent hang.
+    const hardTimeoutMs = Math.max(0, Number(this.config.runHardTimeoutMs) || 30 * 60_000);
+    const startedAt = Date.now();
     let failedTurns = 0;
+    let reason = null;
+    let pendingQuestions = null;
+    let questionSeenAt = 0;
     while (agent.status === 'running') {
-      const errors = countFailedTurns(agent.session?.events ?? [], firstSeq);
+      const events = agent.session?.events ?? [];
+      const errors = countFailedTurns(events, firstSeq);
       if (errors > failedTurns) {
         failedTurns = errors;
         if (failedTurns >= cap) {
+          reason = 'max-turn-retries';
           this.log.warn(`run aborted after ${failedTurns} consecutive failed turns (maxTurnRetries=${cap})`);
           try {
             agent.cancel('exceeded-max-turn-retries');
@@ -493,9 +544,39 @@ export class FeishuWebBridgeEngine {
           break;
         }
       }
+      const pending = findPendingUserQuestion(events, firstSeq);
+      if (pending) {
+        pendingQuestions = pending;
+        if (!questionSeenAt) {
+          questionSeenAt = Date.now();
+          this.log.log(`ask_user_question pending (${pending.length} question(s)); will cancel turn after ${Math.round(questionStallMs / 1000)}s — Feishu has no question UI`);
+        } else if (Date.now() - questionSeenAt >= questionStallMs) {
+          reason = 'question-stall';
+          this.log.warn('ask_user_question unanswered; cancelling turn to avoid deadlock');
+          try {
+            agent.cancel('feishu-bridge: ask_user_question abandoned (no answerer on Feishu)');
+          } catch (error) {
+            this.log.warn('agent.cancel failed:', error?.message);
+          }
+          break;
+        }
+      } else {
+        questionSeenAt = 0;
+        if (reason === null && pendingQuestions) pendingQuestions = null;
+      }
+      if (hardTimeoutMs > 0 && Date.now() - startedAt >= hardTimeoutMs) {
+        reason = 'hard-timeout';
+        this.log.warn(`run exceeded hard timeout ${hardTimeoutMs}ms; cancelling`);
+        try {
+          agent.cancel(`exceeded-hard-timeout-${hardTimeoutMs}`);
+        } catch (error) {
+          this.log.warn('agent.cancel failed:', error?.message);
+        }
+        break;
+      }
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
-    return { aborted: failedTurns >= cap, failedTurns };
+    return { aborted: reason !== null, failedTurns, reason, pendingQuestions };
   }
 
   /**
@@ -745,8 +826,10 @@ export class FeishuWebBridgeEngine {
       }));
 
       let aborted = false;
+      let abortReason = null;
+      let pendingQuestions = null;
       try {
-        ({ aborted } = await this.awaitIdleCapped(agent, firstSeq));
+        ({ aborted, reason: abortReason, pendingQuestions } = await this.awaitIdleCapped(agent, firstSeq));
       } catch (error) {
         this.log.error(`run failed for chat=${chatId}:`, error.message);
         this.trySend(chatId, `⚠️ 处理出错：${error.message}`);
@@ -766,6 +849,20 @@ export class FeishuWebBridgeEngine {
       }
       this.state.chats[chatId].lastActivity = new Date().toISOString();
       await this.saveState();
+
+      if (aborted && abortReason === 'question-stall' && pendingQuestions?.length) {
+        const lines = pendingQuestions.map((q) => {
+          const head = q.header ? `【${q.header}】` : '';
+          const options = q.options?.length ? `\n可选：${q.options.map((o) => o.label).join(' ／ ')}` : '';
+          return `${head}${q.question}${options}`;
+        }).join('\n\n');
+        this.trySend(chatId, `❓ 助手需要先和你确认一下（飞书端无法弹出确认框，已自动停下来等你）：\n\n${lines}\n\n请直接在聊天里回复你的选择（例如“按你的最佳判断继续，不用再问我”），我会按你的意思继续处理。`);
+        return;
+      }
+      if (aborted && abortReason === 'hard-timeout') {
+        this.trySend(chatId, `⚠️ 本轮处理超过 ${Math.round((Number(this.config.runHardTimeoutMs) || 30 * 60_000) / 60_000)} 分钟仍未能完成，已自动停止；请重发消息或拆分需求后再试。`);
+        return;
+      }
 
       if (!reply) {
         turnError = turnError || lastTurnErrorText(atRest, firstSeq);
@@ -1404,8 +1501,9 @@ export class FeishuWebBridgeEngine {
       }));
 
       let aborted = false;
+      let abortReason = null;
       try {
-        ({ aborted } = await this.awaitIdleCapped(agent, firstSeq));
+        ({ aborted, reason: abortReason } = await this.awaitIdleCapped(agent, firstSeq));
       } catch (error) {
         log.error(`schedule ${rec.id} run failed for chat=${chatId}:`, error.message);
         return this.scheduleFail(rec, error.message);
@@ -1424,6 +1522,14 @@ export class FeishuWebBridgeEngine {
       }
       this.state.chats[chatId].lastActivity = new Date().toISOString();
       await this.saveState();
+
+      if (abortReason === 'question-stall') {
+        log.warn(`schedule ${rec.id}: aborted on a pending ask_user_question (Feishu cannot answer); skipping this round`);
+        return this.scheduleFail(rec, '定时任务中途想向用户提问（飞书端无法应答），已跳过本轮', true);
+      }
+      if (abortReason === 'hard-timeout') {
+        return this.scheduleFail(rec, `定时任务处理超过 ${Math.round((Number(this.config.runHardTimeoutMs) || 30 * 60_000) / 60_000)} 分钟未完成，已跳过本轮`, true);
+      }
 
       if (!reply) {
         runError = runError || lastTurnErrorText(atRest, firstSeq);

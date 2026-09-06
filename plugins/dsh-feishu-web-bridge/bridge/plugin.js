@@ -87,6 +87,8 @@ export function apply(ctx, config = {}, deps = {}) {
           archiveKeepPerChat: SchemaObj.number().integer().min(1).description('Max archived sessions remembered per chat for cleanup'),
           showStats: SchemaObj.boolean().description('Show usage/model footer at the bottom of reply cards'),
           maxTurnRetries: SchemaObj.number().integer().min(0).default(10).description('Consecutive failed turns allowed per run before aborting (retry-storm guard)'),
+          questionStallMs: SchemaObj.number().integer().min(0).default(30000).description('Cancel a run parked on ask_user_question after N ms (Feishu has no question UI; avoids deadlock)'),
+          runHardTimeoutMs: SchemaObj.number().integer().min(0).default(1800000).description('Absolute per-run ceiling in ms; cancel any run that exceeds it (silent-hang guard)'),
         });
         const namespace = settingsNamespaceFn('dsh-feishu-web-bridge');
         ctx.inject(['settings'], async (settingsContext) => {
