@@ -235,12 +235,22 @@ free -h | head -2
         const authArgs = webUser && webPass
           ? ['-u', `${webUser}:${webPass}`]
           : [];
-        const webProbe = spawnSync('curl', ['-sk', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '10', ...authArgs, webUrl], {
+        const webProbe = spawnSync('curl', ['-sk', '-D', '-', '-o', '/dev/null', '--max-time', '10', ...authArgs, webUrl], {
           encoding: 'utf8',
           timeout: 20_000,
         });
-        const code = webProbe.stdout?.trim() || String(webProbe.status ?? 'ERR');
-        web = { url: webUrl, http_code: code, ok: code === '200' };
+        const head = webProbe.stdout || '';
+        const m = head.match(/^HTTP\/\S+\s+(\d{3})/m);
+        const code = (m && m[1]) || String(webProbe.status ?? 'ERR');
+        const wwwAuth = /www-authenticate/i.test(head);
+        // 200 = 直通；401 且带 WWW-Authenticate = Basic 认证未过；401 无该头 = 已过 Basic、被 dsh 层 token 拦（凭据本身有效）
+        const ok = code === '200' || (authArgs.length > 0 && code === '401' && !wwwAuth);
+        web = {
+          url: webUrl,
+          http_code: code,
+          ok,
+          note: ok ? (code === '200' ? '可直接访问' : 'Basic 登录有效（dsh 层需 URL token）') : '无法访问或凭据错误',
+        };
       }
 
       return {
