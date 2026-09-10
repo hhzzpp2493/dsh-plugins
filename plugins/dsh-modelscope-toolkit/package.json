@@ -1,0 +1,30 @@
+{
+  "name": "dsh-modelscope-toolkit",
+  "version": "0.1.0",
+  "description": "ModelScope 生态接入 dsh：官方 MCP server（搜索/生图等工具）+ 官方 Agent Skills（ms-hub / ms-studio-deploy）+ MCP 状态/启动与 skill 同步运维工具。",
+  "private": false,
+  "type": "module",
+  "main": "plugin.js",
+  "exports": {
+    ".": "./plugin.js",
+    "./tools": "./tools/index.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "modelscope",
+    "mcp"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./bundle.patch.yml"
+    }
+  }
+}

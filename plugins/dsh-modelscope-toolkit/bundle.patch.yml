@@ -1,0 +1,31 @@
+# dsh-modelscope-toolkit bundle patch — 一行挂载即得全套魔搭能力：
+#   1) 魔搭官方 MCP server（streamable-http，默认本机 8765 端口）
+#   2) 本插件的管理工具 modelscope_mcp_status / modelscope_mcp_start / modelscope_skill_sync
+#
+# 前置条件：
+#   - uv 已安装（curl -LsSf https://astral.sh/uv/install.sh | sh）
+#   - MODELSCOPE_API_TOKEN 已在 dsh 进程环境中（或改成本插件的 tokenFile 配置）
+#   - skill 目录：把 modelscope/modelscope-skills 的 ms-hub / ms-studio-deploy
+#     放到 ~/.agents/skills/（可用 modelscope_skill_sync 工具一键同步）
+
+# 1) 魔搭 MCP server 接入（工具注入为 mcp__modelscope__*）
+- insert:
+    - id: modelscope-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: modelscope
+        transport: streamable-http
+        url: http://127.0.0.1:8765/mcp
+        headers:
+          Accept: 'application/json, text/event-stream'
+        toolCallTimeoutMs: 120000
+
+# 2) 魔搭运维工具（管理上面那个 MCP server + 同步官方 skill）
+- insert:
+    - id: dsh-modelscope-toolkit
+      name: 'dsh-modelscope-toolkit'
+      config:
+        port: 8765
+        skillsNames:
+          - ms-hub
+          - ms-studio-deploy
