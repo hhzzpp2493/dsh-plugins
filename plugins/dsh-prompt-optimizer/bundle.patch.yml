@@ -1,12 +1,11 @@
 # dsh-prompt-optimizer bundle patch — 让 profile 以 bundle 方式加载本插件。
 # 配置项（均可省略，有缺省值）：
-#   apiKeyEnv: 读取 API Key 的凭据名（缺省 DEEPSEEK_API_KEY）
-#   baseUrl:    OpenAI 兼容接口地址（缺省 https://api.deepseek.com）
-#   model:      优化用模型（缺省 deepseek-chat）
+#   provider: harness llm 服务的 provider 路由（缺省 opencode-go，即本机主力 provider）
+#   model:    优化用模型（缺省 deepseek-v4-flash，与主对话一致）
+#   apiKeyEnv / baseUrl / directModel: 仅当环境没有 llm 服务时的 OpenAI 兼容直连兜底
 - insert:
     - id: dsh-prompt-optimizer
       name: 'dsh-prompt-optimizer'
       config:
-        apiKeyEnv: DEEPSEEK_API_KEY
-        baseUrl: https://api.deepseek.com
-        model: deepseek-chat
+        provider: opencode-go
+        model: deepseek-v4-flash

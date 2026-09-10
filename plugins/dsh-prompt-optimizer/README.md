@@ -45,14 +45,18 @@
 
 | 配置项 | 缺省 | 说明 |
 |---|---|---|
-| `apiKeyEnv` | `DEEPSEEK_API_KEY` | 优化请求的 API Key 凭据名（`~/.dsh/.credentials.yaml` 或环境变量） |
-| `baseUrl` | `https://api.deepseek.com` | OpenAI 兼容接口地址（可换任意兼容服务） |
-| `model` | `deepseek-chat` | 优化用模型 |
+| `provider` | `opencode-go` | harness `llm` 服务的 provider 路由（复用主对话凭据/重试策略，无需单独配 key） |
+| `model` | `deepseek-v4-flash` | 优化用模型 |
 | `maxTokens` | `1024` | 优化输出上限 |
 | `timeoutMs` | `60000` | 单次请求超时 |
-| `maxRetries` | `3` | 429/5xx/网络抖动的重试次数 |
+| `maxRetries` | `3` | 直连兜底路径的重试次数 |
+| `apiKeyEnv` | `DEEPSEEK_API_KEY` | 仅直连兜底（环境没有 llm 服务时）的 API Key 凭据名 |
+| `baseUrl` | `https://api.deepseek.com` | 仅直连兜底的 OpenAI 兼容接口地址 |
+| `directModel` | `deepseek-chat` | 仅直连兜底的模型 |
 
-也可用环境变量覆盖：`DSH_PROMPT_OPTIMIZER_API_KEY_ENV` / `DSH_PROMPT_OPTIMIZER_BASE_URL` / `DSH_PROMPT_OPTIMIZER_MODEL`。
+环境变量覆盖：`DSH_PROMPT_OPTIMIZER_PROVIDER` / `DSH_PROMPT_OPTIMIZER_MODEL` / `DSH_PROMPT_OPTIMIZER_API_KEY_ENV` / `DSH_PROMPT_OPTIMIZER_BASE_URL` / `DSH_PROMPT_OPTIMIZER_DIRECT_MODEL`。
+
+> 默认走 harness 的 `llm` 服务（`ctx.llm.stream`），因此用的是你在 dsh 里配置的主力 provider（opencode-go + deepseek-v4-flash），凭据、重试、路由全部复用，无需为优化单独配 API Key。
 
 ## 许可
 
