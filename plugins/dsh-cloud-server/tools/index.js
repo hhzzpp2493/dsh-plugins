@@ -192,10 +192,16 @@ function registerCloudTools(ctx, config = {}) {
       const script = `
 set -u
 echo "=== services ==="
-for u in dsh.service dsh-feishu-cli-bridge.service sensenova-relay.service nginx.service; do
+for u in dsh.service sensenova-relay.service nginx.service; do
   st=$(systemctl is-active "$u" 2>/dev/null || echo inactive)
   echo "$u|$st"
 done
+# lark-consumer: 飞书消息消费进程（web 内嵌桥接，2026-09-10 起替代已移除的 legacy dsh-feishu-cli-bridge.service）
+if pgrep -fc 'lark-cli event consume' >/dev/null 2>&1; then
+  echo "lark-consumer|active"
+else
+  echo "lark-consumer|inactive"
+fi
 echo "=== disk ==="
 df -h / | tail -1
 echo "=== mem ==="
