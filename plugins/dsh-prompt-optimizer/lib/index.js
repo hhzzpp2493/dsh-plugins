@@ -86,11 +86,7 @@ async function optimizeWithLlm(cfg, apiKey, text, mode = 'general') {
       '你是一位提示词工程专家。用户发来一段草稿指令，请把它压缩为一份简洁的高质量提示词：' +
       '保留核心意图与关键约束，去掉冗余表达；结构仍然清晰。' +
       '保持用户使用的语言。只输出优化后的提示词正文，不要任何解释、标题或引号包裹。',
-  }[mode] ?? modeSystemGenerated();
-
-  function modeSystemGenerated() {
-    return '你是一位提示词工程专家。请把用户的草稿指令改写为一份高质量提示词：结构清晰、信息完整、意图明确。保持用户使用的语言，只输出优化后的提示词正文，不要任何解释、标题或引号包裹。';
-  }
+  }[mode] ?? '你是一位提示词工程专家。请把用户的草稿指令改写为一份高质量提示词：结构清晰、信息完整、意图明确。保持用户使用的语言，只输出优化后的提示词正文，不要任何解释、标题或引号包裹。';
 
   const payload = {
     model: cfg.model,
@@ -235,6 +231,20 @@ function registerOptimizeTool(ctx, cfg) {
         text: { type: 'string', description: '要优化的原始提示词草稿。' },
         mode: { type: 'string', enum: ['general', 'expand', 'concise'], description: '优化风格：general 常规精炼（缺省）、expand 扩写更详尽、concise 压缩更简短。' },
       },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['optimized'],
+        properties: {
+          optimized: { type: 'string', description: '优化后的提示词正文。' },
+          model: { type: 'string', description: '用于优化的模型 id。' },
+        },
+      },
+      render: (_args, raw) => [
+        { type: 'text', text: `✨ 提示词优化结果（${raw?.model ?? 'unknown'}）：\n${raw?.optimized ?? ''}` },
+      ],
     },
     async execute(rawArgs) {
       const args = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? rawArgs : {};
