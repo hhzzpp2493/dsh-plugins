@@ -24,6 +24,9 @@
   ],
   "license": "MIT",
   "dsh": {
+    "bundle": {
+      "patch": "./bundle.patch.yml"
+    },
     "client": {
       "platform": "web"
     }
