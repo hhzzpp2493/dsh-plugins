@@ -1,11 +1,12 @@
-# dsh-prompt-optimizer bundle 配置参考（profile 以 bundle 方式加载本插件时，
-# 可在本补丁中覆盖默认配置；缺省值见 lib/index.js 的 DEFAULT_CONFIG）。
-# 注意：不要在这里 insert 自身——插件已作为 bundle 条目加载，insert 会造成重复注册。
-- id: dsh-prompt-optimizer
-  config:
-    provider: opencode-go
-    model: deepseek-v4-flash
-    # 可选兜底（仅当环境没有 llm 服务时的 OpenAI 兼容直连）：
-    # apiKeyEnv: DEEPSEEK_API_KEY
-    # baseUrl: https://api.deepseek.com
-    # directModel: deepseek-chat
+# dsh-prompt-optimizer bundle patch：bundle 条目只贡献 patch 层，
+# 插件本身必须由本补丁 insert 进配置树（否则不会加载）。
+- insert:
+    - id: dsh-prompt-optimizer
+      name: dsh-prompt-optimizer
+      config:
+        provider: opencode-go
+        model: deepseek-v4-flash
+        # 可选兜底（仅当环境没有 llm 服务时的 OpenAI 兼容直连）：
+        # apiKeyEnv: DEEPSEEK_API_KEY
+        # baseUrl: https://api.deepseek.com
+        # directModel: deepseek-chat
