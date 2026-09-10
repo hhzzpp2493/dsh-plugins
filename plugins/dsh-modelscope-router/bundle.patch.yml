@@ -1,0 +1,25 @@
+# dsh-modelscope-router bundle patch — 把魔搭免费推理池自动路由挂进 dsh
+
+# 需要前置：
+#   - 已装 dsh-modelscope-toolkit（提供 token 文件 ~/.dsh/modelscope-token）
+#   - Node >= 18（用全局 fetch）
+#
+# 提供的 4 个工具：
+#   - ms_chat         自动路由：按档位 strong/main/light/deep + 关键词 + 长度自动选模型
+#   - ms_chat_force   强制指定档位或具体模型（测试用）
+#   - ms_ledger       查看今日额度：主池 2000、深推理池 200
+#   - ms_ledger_reset 手动清零今日记账（测试用）
+- insert:
+    - id: dsh-modelscope-router
+      name: 'dsh-modelscope-router'
+      config:
+        baseUrl: 'https://api-inference.modelscope.cn/v1/chat/completions'
+        tokenFile: /home/ubuntu/.dsh/modelscope-token
+        timeoutMs: 90000
+        ledgerPath: /home/ubuntu/.dsh/storages/ms-router-ledger.json
+        dailyLimit: 2000
+        deepPoolLimit: 200
+        degradeRatio: 0.95
+        heavyUseThreshold: 30
+        defaultTier: strong
+        enableThinking: false
