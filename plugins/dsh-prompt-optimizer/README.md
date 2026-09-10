@@ -27,19 +27,24 @@
    ln -s <本插件目录> ~/.dsh/profiles/node_modules/dsh-prompt-optimizer
    ```
 
-2. 在 `~/.dsh/profiles/<profile>/cordis.patch.yml` 追加（web profile 为热加载，无需重启）：
+2. 把插件加进 profile 的 bundle 列表（客户端部分只有以 bundle 方式加载才会被扫描注入 web 界面）：
 
-   ```yaml
-   - insert:
-       - id: dsh-prompt-optimizer
-         name: 'dsh-prompt-optimizer'
-         config:
-           apiKeyEnv: DEEPSEEK_API_KEY
-           baseUrl: https://api.deepseek.com
-           model: deepseek-chat
+   `~/.dsh/profiles/<profile>/package.json`：
+
+   ```json
+   "dsh": { "profile": { "bundles": [ "@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-prompt-optimizer" ] } }
    ```
 
-3. 浏览器刷新（或等 HMR 推送）即可在输入框看到 ✍️ 按钮。
+3. （可选）在 `~/.dsh/profiles/<profile>/cordis.patch.yml` 覆盖配置（不写则用缺省）：
+
+   ```yaml
+   - id: dsh-prompt-optimizer
+     config:
+       provider: opencode-go
+       model: deepseek-v4-flash
+   ```
+
+4. 重启 `dsh web`（或等 HMR 推送），刷新浏览器即可在输入框看到 ✍️ 按钮。
 
 ## 配置
 
