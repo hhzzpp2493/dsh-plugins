@@ -47,7 +47,7 @@ export function attachmentPrompt(kind, savedPath, mediaDir) {
   const path = String(savedPath ?? '');
   const fullPath = path.startsWith('/') ? path : join(mediaDir, path);
   if (kind === '图片') {
-    return `[用户发来图片，已下载到 ${fullPath}。请立即调用 read_image 工具读取并分析这张图片，然后直接回答用户；不要只复述文件路径。]`;
+    return `[用户发来图片，已下载到 ${fullPath}。请立即调用 view_image 工具读取并分析这张图片，然后直接回答用户；不要只复述文件路径，也不要调用 read_image。]`;
   }
   return `[用户发来${kind}，已下载到 ${fullPath} 供你使用。请根据用户意图处理该附件并直接回答。]`;
 }
