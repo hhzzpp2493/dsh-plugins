@@ -1,0 +1,32 @@
+{
+  "name": "dsh-modelscope-router",
+  "version": "0.1.0",
+  "description": "ModelScope 免费推理池自动路由插件：按档位（strong/main/light/deep）+ fallback 顺序调魔搭 OpenAI 兼容推理接口，每日额度本地记账（主池 2000、深度池 200）+ SSE 流式聚合 + 中文关键词自动选档。",
+  "private": false,
+  "type": "module",
+  "main": "plugin.js",
+  "exports": {
+    ".": "./plugin.js",
+    "./tools": "./tools/index.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "modelscope",
+    "router",
+    "llm",
+    "quota"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./bundle.patch.yml"
+    }
+  }
+}
