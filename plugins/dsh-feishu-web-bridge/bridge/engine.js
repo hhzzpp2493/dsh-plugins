@@ -30,9 +30,11 @@ export function makeLogger(prefix = '[feishu-bridge]') {
 }
 
 /** Config resolution: explicit config keys win over environment defaults. */
-export function normalizeInboundAttachment(messageType, content = {}) {
+export function normalizeInboundAttachment(messageType, content = {}, contentRaw = '') {
   const type = String(messageType ?? '').toLowerCase();
-  const key = content.image_key ?? content.file_key ?? content.media_key ?? content.audio_key;
+  const rendered = typeof contentRaw === 'string' ? contentRaw : '';
+  const renderedKey = rendered.match(/^\s*\[(?:image|media|audio|file)\s*:\s*([^\s\]]+)\]\s*$/i)?.[1];
+  const key = content.image_key ?? content.file_key ?? content.media_key ?? content.audio_key ?? renderedKey;
   if (!key) return null;
   if (type === 'image') return { kind: '图片', resourceType: 'image', key };
   if (type === 'media') return { kind: '视频', resourceType: 'file', key };
@@ -751,7 +753,7 @@ export class FeishuWebBridgeEngine {
     if (msgType === 'text') {
       text = String(content.text ?? (typeof contentRaw === 'string' ? contentRaw : '') ?? '').trim();
     } else {
-      const attachment = normalizeInboundAttachment(msgType, content);
+      const attachment = normalizeInboundAttachment(msgType, content, contentRaw);
       if (attachment && messageId) {
         try {
           const saved = this.sender.downloadResource(
