@@ -50,6 +50,25 @@ function sessionIdForChat(chatId) {
   return `feishu2:${chatId}`;
 }
 
+export function normalizeInboundAttachment(messageType, content = {}) {
+  const type = String(messageType ?? '').toLowerCase();
+  const key = content.image_key ?? content.file_key ?? content.media_key ?? content.audio_key;
+  if (!key) return null;
+  if (type === 'image') return { kind: '图片', resourceType: 'image', key };
+  // Feishu uses `media` for video messages. Audio, file and other resource
+  // messages use the same file-resource download API.
+  if (type === 'media') return { kind: '视频', resourceType: 'file', key };
+  if (type === 'audio') return { kind: '音频', resourceType: 'file', key };
+  if (type === 'file') return { kind: '文件', resourceType: 'file', key };
+  return null;
+}
+
+export function attachmentPrompt(kind, savedPath, mediaDir) {
+  const path = String(savedPath ?? '');
+  const fullPath = path.startsWith('/') ? path : join(mediaDir, path);
+  return `[用户发来${kind}，已下载到 ${fullPath} 供你使用]`;
+}
+
 function buildPrompt(chatId, userName, text) {
   return [
     `User message from Feishu chat ${chatId}${userName ? ` (from ${userName})` : ''}:`,
@@ -367,19 +386,19 @@ export class FeishuBridgeEngine {
     let text = '';
     if (msgType === 'text') {
       text = String(content.text ?? (typeof contentRaw === 'string' ? contentRaw : '') ?? '').trim();
-    } else if (msgType === 'image' || msgType === 'file') {
-      const key = content.image_key ?? content.file_key;
-      if (key && messageId) {
+    } else {
+      const attachment = normalizeInboundAttachment(msgType, content);
+      if (attachment && messageId) {
         try {
           const saved = this.sender.downloadResource(
             messageId,
-            key,
-            msgType === 'image' ? 'image' : 'file',
+            attachment.key,
+            attachment.resourceType,
             this.config.mediaDir,
           );
-          text = `[用户发来${msgType === 'image' ? '图片' : '文件'}，已下载到 ${join(this.config.mediaDir, saved)} 供你使用]`;
+          text = attachmentPrompt(attachment.kind, saved, this.config.mediaDir);
         } catch (error) {
-          text = `[用户发来${msgType === 'image' ? '图片' : '文件'}，但下载失败：${error.message}]`;
+          text = `[用户发来${attachment.kind}，但下载失败：${error.message}]`;
         }
       }
     }

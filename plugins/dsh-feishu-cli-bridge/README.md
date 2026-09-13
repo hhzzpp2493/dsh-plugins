@@ -94,7 +94,7 @@ node test-agent-tool.js    # agent 工具全链路（建文档/上传/搜索，�
 
 ## 限制（v0.2）
 
-- 收消息仅文本 + 图片/文件（附件自动下载注入路径）；富文本暂不解析
+- 收消息支持文本、图片、视频、音频及普通文件（附件自动下载并将本地路径注入 agent）；富文本暂不解析
 - 回复为最终文本（无流式卡片交互）
 - `feishu_send_message` / `feishu_send_file` 需显式 `chat_id`（桥每轮注入当前 chat_id）
 - 云盘函数默认 `--as user`（用户 OAuth 身份）；bot 身份仅用于收发消息

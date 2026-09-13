@@ -41,7 +41,7 @@
 | 键 | 环境变量 | 默认 | 说明 |
 |---|---|---|---|
 | `workspace` | `DSH_FEISHU_WORKSPACE` | `$DSH_HOME/feishu-workspace` | 飞书会话工作目录（web 端） |
-| `mediaDir` | `DSH_FEISHU_MEDIA_DIR` | `$DSH_HOME/feishu-media` | 飞书图片/文件下载目录 |
+| `mediaDir` | `DSH_FEISHU_MEDIA_DIR` | `$DSH_HOME/feishu-media` | 飞书图片/视频/音频/文件下载目录 |
 | `cliBin` | `DSH_FEISHU_CLI_BIN` | `lark-cli` | lark-cli 可执行文件 |
 | `cliHome` | `DSH_FEISHU_CLI_HOME` | `$HOME` | 存放 `~/.lark-cli` 凭据的家目录 |
 | `sendAck` | `DSH_FEISHU_ACK` | `true` | 先回「收到，正在处理…」 |
@@ -56,7 +56,7 @@
 
 ## 飞书端
 
-- 普通文本 / 图片 / 文件 → 投进该聊天的 web 会话；agent 完成后**以交互卡片回复**（蓝色 `🐋 DeepSeek Harness` 卡片，移动端自适应）。
+- 普通文本 / 图片 / 视频 / 音频 / 文件 → 投进该聊天的 web 会话；附件会先下载到 `mediaDir` 并把本地路径交给 agent；agent 完成后**以交互卡片回复**（蓝色 `🐋 DeepSeek Harness` 卡片，移动端自适应）。
 - 卡片最下端（可开关）显示**与 web 界面完全相同的**用量指标：`📊 输入 · 输出 · 缓存命中` + `🖥️ 模型`——直接读取 host 侧 `sessionProjections` 的 `tokenUsage` 投影（正是浏览器渲染的那组数，非桥自己折算），模型取自会话最新的 request header。
 - 命令：
   - `/new`（或 `/重置` / `/重开`）：为**本聊天**开新会话——旧会话归档（web 端可恢复），会话 id 从 `feishu-<chatId>` 递增为 `feishu-<chatId>-2`、`-3`…，下一条消息接入全新会话。
