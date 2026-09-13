@@ -483,6 +483,7 @@ export class FeishuWebBridgeEngine {
   async ensureSessionFor(chatId, sessionId) {
     let agent = this.agents.get(sessionId);
     if (agent) return agent;
+    let createSessionId = sessionId;
 
     // Persisted (web restarted since the chat last spoke) → resume the SAME session.
     if (this.sessionPersistence) {
@@ -503,15 +504,20 @@ export class FeishuWebBridgeEngine {
             return resumed;
           }
           this.log.warn(`session ${sessionId} has a different cwd; creating a fresh session`);
+          // The requested id already exists in persistence. Creating with the
+          // same id would fail, so reserve a unique generation id instead.
+          const suffix = Date.now().toString(36);
+          createSessionId = `${sessionId}-${suffix}`;
         }
       } catch (error) {
         this.log.warn(`resume failed for chat=${chatId}; creating fresh: ${error.message}`);
+        createSessionId = `${sessionId}-${Date.now().toString(36)}`;
       }
     }
 
     const composition = await this.composePreset(undefined, chatId);
     const { agent: created } = await this.agents.create({
-      sessionId,
+      sessionId: createSessionId,
       agentOptions: this.agentOptionsFor(chatId),
       meta: {
         cwd: this.workspacePath,
@@ -521,11 +527,11 @@ export class FeishuWebBridgeEngine {
     });
     try {
       const ws = await this.ensureFeishuWorkspace();
-      await ws.attachSession(sessionId);
+      await ws.attachSession(createSessionId);
     } catch (error) {
-      this.log.warn(`workspace attach failed for ${sessionId}: ${error.message}`);
+      this.log.warn(`workspace attach failed for ${createSessionId}: ${error.message}`);
     }
-    this.log.log(`created session ${sessionId} for chat=${chatId}`);
+    this.log.log(`created session ${createSessionId} for chat=${chatId}`);
     return created;
   }
 
