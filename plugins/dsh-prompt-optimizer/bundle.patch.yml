@@ -5,6 +5,6 @@
       name: dsh-prompt-optimizer
       config:
         provider: siliconflow
-        model: deepseek-ai/DeepSeek-V4-Pro
+        model: deepseek-ai/DeepSeek-V4-Flash
         apiKeyEnv: SILICONFLOW_API_KEY
         baseUrl: https://api.siliconflow.cn/v1
