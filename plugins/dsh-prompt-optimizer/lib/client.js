@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
 
 		// ------------------------------------------------------------ css
 		const css = [
-			".po_btn{corner-shape:round;background:var(--dsw-specific-selector);width:28px;height:28px;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;border-radius:999px;flex:none;place-items:center;display:grid;transition:background-color .1s}",
+			".po_btn{corner-shape:round;background:var(--dsw-specific-selector);width:auto;height:28px;padding:0 9px;gap:5px;font-size:12px;white-space:nowrap;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;border-radius:999px;flex:none;align-items:center;display:inline-flex;transition:background-color .1s}",
 			".po_btn:hover{background:var(--dsw-alias-interactive-bg-hover-solid)}",
 			".po_btn:disabled{opacity:.45;cursor:not-allowed}",
 			".po_btn:focus-visible{outline:2px solid var(--dsw-alias-focus-ring,var(--dsw-alias-state-business-primary));outline-offset:2px}",
@@ -113,10 +113,10 @@ window.__ModuleLoader__.load({
 		// ------------------------------------------------------------ optimize call
 		async function runOptimize(sessionId, text, mode) {
 			if (!text || !text.trim()) {
-				setStore({ ...RESET, phase: "error", sessionId, error: zh["emptyNotice"], seq: -1 });
+				setStore({ ...RESET, phase: "error", sessionId: sessionId ?? null, error: zh["emptyNotice"], seq: -1 });
 				return;
 			}
-			setStore({ phase: "optimizing", sessionId, original: text, optimized: "", error: "" });
+			setStore({ phase: "optimizing", sessionId: sessionId ?? null, original: text, optimized: "", error: "" });
 			try {
 				const res = await fetch("/plugins/prompt-optimizer/optimize", {
 					method: "POST",
@@ -129,9 +129,9 @@ window.__ModuleLoader__.load({
 				if (!res.ok || !data || data.ok !== true || typeof data.optimized !== "string" || !data.optimized.trim()) {
 					throw new Error((data && typeof data.error === "string" ? data.error : "HTTP " + String(res.status)) || "未知错误");
 				}
-				setStore({ phase: "done", sessionId, original: text, optimized: data.optimized, error: "" });
+				setStore({ phase: "done", sessionId: sessionId ?? null, original: text, optimized: data.optimized, error: "" });
 			} catch (error) {
-				setStore({ phase: "error", sessionId, original: text, optimized: "", error: (error && error.message) || String(error) });
+				setStore({ phase: "error", sessionId: sessionId ?? null, original: text, optimized: "", error: (error && error.message) || String(error) });
 			}
 		}
 
@@ -140,11 +140,13 @@ window.__ModuleLoader__.load({
 			const s = useStore();
 			const draft = (typeof props.useInput === "function") ? props.useInput((st) => st.draft) : "";
 			const phase = (typeof props.useInput === "function") ? props.useInput((st) => st.phase) : "inert";
-			const busy = phase === "claimed" || phase === "submitting" || phase === "adjudicating";
+			const session = (typeof props.useSession === "function") ? props.useSession((st) => st) : null;
+			const effectiveSessionId = props.sessionId ?? session?.sessionId ?? null;
+			const busy = phase === "claimed" || phase === "submitting" || phase === "adjudicating" || s.phase === "optimizing";
 			const t = props.t || ((key) => key);
 			const onClick = () => {
-				if (draft && draft.trim() && props.sessionId && !busy) {
-					runOptimize(props.sessionId, draft, "general");
+				if (draft && draft.trim() && !busy) {
+					runOptimize(effectiveSessionId, draft, "general");
 				}
 			};
 			return react.createElement(
@@ -158,9 +160,11 @@ window.__ModuleLoader__.load({
 						title: t("tooltip"),
 						"aria-label": t("aria"),
 						disabled: !draft || !draft.trim() || busy,
+						'aria-busy': busy,
 						onClick
 					},
-					icon(SPARKLE, 15)
+					icon(SPARKLE, 15),
+					t("aria")
 				)
 			);
 		}
@@ -168,11 +172,12 @@ window.__ModuleLoader__.load({
 		// ------------------------------------------------------------ result panel (conversation.input.dock)
 		function ResultPanel(props) {
 			const s = useStore();
-			const sessionId = props.sessionId;
+			const session = (typeof props.useSession === "function") ? props.useSession((state) => state) : null;
+			const sessionId = props.sessionId ?? session?.sessionId ?? null;
+			const draft = (typeof props.useInput === "function") ? props.useInput((state) => state.draft) : "";
 			const t = props.t || ((key) => key);
-			if (s === null || s.phase === "idle" || s.sessionId !== sessionId) return null;
+			if (s === null || s.phase === "idle" || (s.sessionId ?? null) !== sessionId) return null;
 
-			const input = props.input;
 			const inputActions = props.inputActions;
 			const apply = () => {
 				if (s.phase !== "done" || !s.optimized) return;
@@ -187,7 +192,7 @@ window.__ModuleLoader__.load({
 				setStore({ ...RESET, seq: -1 });
 			};
 			const reoptimize = () => {
-				const current = (input && typeof input.draft === "string") ? input.draft : s.original;
+				const current = typeof draft === "string" ? draft : s.original;
 				runOptimize(sessionId, current, "general");
 			};
 			const dismiss = () => setStore({ ...RESET, seq: -1 });

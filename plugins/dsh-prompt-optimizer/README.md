@@ -13,7 +13,7 @@
 
 ## 工作原理
 
-- **服务端**（cordis 插件）：注册 `POST /plugins/prompt-optimizer/optimize` 路由，收到 `{ text, mode }` 后调 **OpenAI 兼容** `/chat/completions` 接口，system 提示词要求模型只输出优化后的正文、保持原语言与意图。
+- **服务端**（cordis 插件）：注册 `POST /plugins/prompt-optimizer/optimize` 路由，收到 `{ text, mode }` 后独立调用硅基流动的 **OpenAI 兼容** `/v1/chat/completions` 接口；不读取当前会话的 provider/model，因此不会阻塞新建对话主流程。
 - **客户端**（web client 插件）：注册两个 Conversation slot——
   - `conversation.input.right`：优化按钮；
   - `conversation.input.dock`：结果面板。
@@ -40,8 +40,8 @@
    ```yaml
    - id: dsh-prompt-optimizer
      config:
-       provider: opencode-go
-       model: deepseek-v4-flash
+       provider: siliconflow
+       model: Qwen/Qwen3-8B
    ```
 
 4. 重启 `dsh web`（或等 HMR 推送），刷新浏览器即可在输入框看到 ✍️ 按钮。
@@ -50,18 +50,17 @@
 
 | 配置项 | 缺省 | 说明 |
 |---|---|---|
-| `provider` | `opencode-go` | harness `llm` 服务的 provider 路由（复用主对话凭据/重试策略，无需单独配 key） |
-| `model` | `deepseek-v4-flash` | 优化用模型 |
+| `provider` | `siliconflow` | 独立供应商标识，不参与主对话模型联动 |
+| `model` | `Qwen/Qwen3-8B` | 硅基流动优化模型 |
 | `maxTokens` | `1024` | 优化输出上限 |
-| `timeoutMs` | `60000` | 单次请求超时 |
-| `maxRetries` | `3` | 直连兜底路径的重试次数 |
-| `apiKeyEnv` | `DEEPSEEK_API_KEY` | 仅直连兜底（环境没有 llm 服务时）的 API Key 凭据名 |
-| `baseUrl` | `https://api.deepseek.com` | 仅直连兜底的 OpenAI 兼容接口地址 |
-| `directModel` | `deepseek-chat` | 仅直连兜底的模型 |
+| `timeoutMs` | `30000` | 单次请求超时 |
+| `maxRetries` | `2` | 429/5xx/网络超时重试次数 |
+| `apiKeyEnv` | `SILICONFLOW_API_KEY` | 硅基流动 API Key 凭据名 |
+| `baseUrl` | `https://api.siliconflow.cn/v1` | 硅基流动 OpenAI 兼容接口地址 |
 
-环境变量覆盖：`DSH_PROMPT_OPTIMIZER_PROVIDER` / `DSH_PROMPT_OPTIMIZER_MODEL` / `DSH_PROMPT_OPTIMIZER_API_KEY_ENV` / `DSH_PROMPT_OPTIMIZER_BASE_URL` / `DSH_PROMPT_OPTIMIZER_DIRECT_MODEL`。
+环境变量覆盖：`DSH_PROMPT_OPTIMIZER_PROVIDER` / `DSH_PROMPT_OPTIMIZER_MODEL` / `DSH_PROMPT_OPTIMIZER_API_KEY_ENV` / `DSH_PROMPT_OPTIMIZER_BASE_URL`。
 
-> 默认走 harness 的 `llm` 服务（`ctx.llm.stream`），因此用的是你在 dsh 里配置的主力 provider（opencode-go + deepseek-v4-flash），凭据、重试、路由全部复用，无需为优化单独配 API Key。
+> 提示词优化独立调用硅基流动，不读取当前会话模型。推荐的 `Qwen/Qwen3-8B` 适合短文本改写；是否免费、免费额度、并发和速率以硅基流动控制台当前账户与模型页面为准，免费额度用尽后需按平台规则付费或停用。
 
 ## 许可
 

@@ -2,7 +2,7 @@
 // - 注册 webServer 路由 POST /plugins/prompt-optimizer/optimize：
 //   收到 { text }，让 LLM 把草稿优化成结构清晰、意图明确的高质量提示词，
 //   返回 { ok, optimized, model, usage }。
-// - 独立调用硅基流动 OpenAI 兼容接口，不读取当前会话的 provider/model，
+// - 独立调用 mozhevip OpenAI 兼容接口，不读取当前会话的 provider/model，
 //   避免新建对话的模型初始化影响提示词优化或主流程。
 // - 同时注册 optimize_prompt agent 工具（复用同一套优化逻辑）。
 import { createHash } from 'node:crypto';
@@ -13,14 +13,14 @@ export const inject = ['webServer', 'credentials', 'tools'];
 // ------------------------------------------------------------------ config
 
 const DEFAULT_CONFIG = {
-  provider: 'siliconflow',
-  model: 'deepseek-ai/DeepSeek-V4-Flash',
+  provider: 'mozhevip',
+  model: 'gpt-6',
   maxTokens: 1024,
   timeoutMs: 30_000,
   maxRetries: 2,
   maxInputChars: 20_000,
-  apiKeyEnv: 'SILICONFLOW_API_KEY',
-  baseUrl: 'https://api.siliconflow.cn/v1',
+  apiKeyEnv: 'MOZHEVIP_API_KEY',
+  baseUrl: 'https://openai.mozhevip.top/v1',
 };
 
 function loadConfig(config = {}) {
@@ -173,13 +173,13 @@ async function optimizeViaHttp(cfg, apiKey, text, mode) {
   throw new Error(`提示词优化多次重试仍失败: ${lastError ?? 'unknown'}`);
 }
 
-/** 独立入口：只调用硅基流动 DeepSeek-V4-Flash，不依赖当前会话或 harness 模型路由。 */
+/** 独立入口：只调用 mozhevip GPT-6，不依赖当前会话或 harness 模型路由。 */
 async function optimizePrompt(ctx, cfg, text, mode) {
   const resolved = await ctx.credentials?.resolve(cfg.apiKeyEnv).catch(() => undefined);
   const apiKey = resolved?.value ?? process.env[cfg.apiKeyEnv];
   if (!apiKey) {
     throw new Error(
-      `未找到硅基流动 API Key（凭据 "${cfg.apiKeyEnv}" 未配置）。` +
+      `未找到 mozhevip API Key（凭据 "${cfg.apiKeyEnv}" 未配置）。` +
       '请配置 SILICONFLOW_API_KEY，提示词优化不可用但不会影响新建对话。'
     );
   }
@@ -254,7 +254,7 @@ function registerOptimizeTool(ctx, cfg) {
         required: ['optimized'],
         properties: {
           optimized: { type: 'string', description: '优化后的提示词正文。' },
-          model: { type: 'string', description: '用于优化的独立模型 (硅基流动 DeepSeek-V4-Flash)。' },
+          model: { type: 'string', description: '用于优化的独立模型 (mozhevip GPT-6)。' },
         },
       },
       render: (_args, raw) => [

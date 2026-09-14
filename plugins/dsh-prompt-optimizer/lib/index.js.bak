@@ -14,7 +14,7 @@ export const inject = ['webServer', 'credentials', 'tools'];
 
 const DEFAULT_CONFIG = {
   provider: 'siliconflow',
-  model: 'deepseek-ai/DeepSeek-V4-Flash',
+  model: 'Qwen/Qwen3-8B',
   maxTokens: 1024,
   timeoutMs: 30_000,
   maxRetries: 2,
@@ -173,7 +173,7 @@ async function optimizeViaHttp(cfg, apiKey, text, mode) {
   throw new Error(`提示词优化多次重试仍失败: ${lastError ?? 'unknown'}`);
 }
 
-/** 独立入口：只调用硅基流动 DeepSeek-V4-Flash，不依赖当前会话或 harness 模型路由。 */
+/** 独立入口：只调用硅基流动，不依赖当前会话或 harness 模型路由。 */
 async function optimizePrompt(ctx, cfg, text, mode) {
   const resolved = await ctx.credentials?.resolve(cfg.apiKeyEnv).catch(() => undefined);
   const apiKey = resolved?.value ?? process.env[cfg.apiKeyEnv];
@@ -254,7 +254,7 @@ function registerOptimizeTool(ctx, cfg) {
         required: ['optimized'],
         properties: {
           optimized: { type: 'string', description: '优化后的提示词正文。' },
-          model: { type: 'string', description: '用于优化的独立模型 (硅基流动 DeepSeek-V4-Flash)。' },
+          model: { type: 'string', description: '用于优化的独立硅基流动模型。' },
         },
       },
       render: (_args, raw) => [

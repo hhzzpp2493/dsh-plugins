@@ -11,6 +11,7 @@ export const inject = ['tools'];
 const DEFAULT_CONFIG = {
   // local
   maintainScript: '/home/hzp/deepseek/dsh-maintain.sh',
+  systemUpdateCommand: '/usr/local/sbin/dsh-system-update',
   maintainLog: '/home/hzp/.dsh/storages/dsh-maintain.log',
   repoRoot: '/home/hzp/deepseek/dsh-plugins',
   repoPlugin: '/home/hzp/deepseek/dsh-plugins/plugins/dsh-feishu-web-bridge',
@@ -214,6 +215,56 @@ export function apply(ctx, config = {}) {
       const out = [r.stdout.trim(), r.stderr.trim()].filter(Boolean).join('\n').slice(-3000);
       const ok = r.ok;
       return { ok, exitCode: r.code ?? -1, output: out || (ok ? '维护完成，无输出' : '维护失败，无输出') };
+    },
+  });
+
+  ctx.tools.register({
+    name: 'system_update_status',
+    description:
+      '查看本机 Ubuntu WSL 软件包更新状态。仅调用受限的 root 固定入口，不接收任意 shell 命令，也不保存 sudo 密码。',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {},
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['ok', 'output'],
+        properties: { ok: { type: 'boolean' }, output: { type: 'string' } },
+      },
+      render: (_args, raw) => text(raw.output ?? (raw.ok ? '查询完成' : '查询失败')),
+    },
+    async execute() {
+      const r = await run(['/usr/bin/sudo', '-n', cfg.systemUpdateCommand, 'status'], { timeoutMs: 120_000 });
+      const output = [r.stdout.trim(), r.stderr.trim()].filter(Boolean).join('\\n').slice(-5000);
+      return { ok: r.ok, output: output || (r.ok ? '没有输出' : 'sudo 授权不可用') };
+    },
+  });
+
+  ctx.tools.register({
+    name: 'system_update_now',
+    description:
+      '更新本机 Ubuntu WSL 系统软件包。仅执行受限的 apt update/apt upgrade 固定入口，不进行发行版升级，不解除 nodejs hold。',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {},
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['ok', 'output'],
+        properties: { ok: { type: 'boolean' }, output: { type: 'string' } },
+      },
+      render: (_args, raw) => text(raw.output ?? (raw.ok ? '更新完成' : '更新失败')),
+    },
+    async execute() {
+      const r = await run(['/usr/bin/sudo', '-n', cfg.systemUpdateCommand, 'update'], { timeoutMs: 600_000 });
+      const output = [r.stdout.trim(), r.stderr.trim()].filter(Boolean).join('\\n').slice(-8000);
+      return { ok: r.ok, output: output || (r.ok ? '更新完成，无输出' : 'sudo 授权不可用') };
     },
   });
 

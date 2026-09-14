@@ -4,9 +4,7 @@
     - id: dsh-prompt-optimizer
       name: dsh-prompt-optimizer
       config:
-        provider: opencode-go
-        model: deepseek-v4-flash
-        # 可选兜底（仅当环境没有 llm 服务时的 OpenAI 兼容直连）：
-        # apiKeyEnv: DEEPSEEK_API_KEY
-        # baseUrl: https://api.deepseek.com
-        # directModel: deepseek-chat
+        provider: siliconflow
+        model: deepseek-ai/DeepSeek-V4-Pro
+        apiKeyEnv: SILICONFLOW_API_KEY
+        baseUrl: https://api.siliconflow.cn/v1
