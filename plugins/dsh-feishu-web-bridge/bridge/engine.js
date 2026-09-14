@@ -517,15 +517,27 @@ export class FeishuWebBridgeEngine {
     }
 
     const composition = await this.composePreset(undefined, chatId);
-    const { agent: created } = await this.agents.create({
-      sessionId: createSessionId,
+    const createOptions = {
       agentOptions: this.agentOptionsFor(chatId),
       meta: {
         cwd: this.workspacePath,
         ...(composition.agentPreset ? { agentPreset: composition.agentPreset } : {}),
       },
       setup: composition.setup,
-    });
+    };
+    let created;
+    try {
+      ({ agent: created } = await this.agents.create({ sessionId: createSessionId, ...createOptions }));
+    } catch (error) {
+      // A stale mapping or a concurrent restart may reserve the requested id
+      // between list/stat and create. Never surface this as a permanent Feishu
+      // failure: allocate a fresh generation id and continue.
+      if (!/already exists|already owned/i.test(String(error?.message ?? error))) throw error;
+      const fallbackId = `${sessionId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      this.log.warn(`session id collision for chat=${chatId}; retrying with ${fallbackId}`);
+      ({ agent: created } = await this.agents.create({ sessionId: fallbackId, ...createOptions }));
+      createSessionId = fallbackId;
+    }
     try {
       const ws = await this.ensureFeishuWorkspace();
       await ws.attachSession(createSessionId);
