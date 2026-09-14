@@ -490,9 +490,10 @@ export class FeishuWebBridgeEngine {
       try {
         const listed = await this.sessionPersistence.list();
         if (listed.some((h) => h.id === sessionId)) {
-          const inspected = await this.sessionPersistence.inspect(sessionId);
-          if (inspected.meta.cwd === this.workspacePath) {
-            const presetId = inspected.meta.agentPreset;
+          const snapshot = await this.sessionPersistence.stat(sessionId);
+          const storedMeta = snapshot?.header;
+          if (storedMeta?.cwd === this.workspacePath) {
+            const presetId = storedMeta.agentPreset;
             const composition = await this.composePreset(presetId, chatId);
             const { agent: resumed } = await this.agents.resume({
               resumeSessionId: sessionId,
@@ -711,9 +712,13 @@ export class FeishuWebBridgeEngine {
   async reloadSessionEvents(sessionId) {
     try {
       if (!this.sessionPersistence) return null;
-      const insp = await this.sessionPersistence.inspect(sessionId);
-      const raw = insp?.events ?? insp?.log ?? insp?.session?.events ?? insp;
-      return asEventArray(raw);
+      const handle = await this.sessionPersistence.open(sessionId, 'read');
+      try {
+        const result = await handle.read();
+        return asEventArray(result?.events ?? result?.log ?? result);
+      } finally {
+        await handle.close();
+      }
     } catch (error) {
       this.log.warn(`reload events failed for ${sessionId}:`, error.message);
       return null;
